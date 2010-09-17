@@ -180,18 +180,46 @@ _Q15 makeQ15(_Q16 in) {
 
 _Q16 td = 0;
 _Q16 _Q16one = (_Q16)0x00010000;
+_Q15 _Q15addOne(_Q15 input) {
+	return _Q15 ^ 0x80000000;
+}
+
 void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void)
 {
-	td = _Q16add(td, _Q16neg(_Q16one));
-	if(td < 0) {
-		_Q16 x = _Q16mul(_Q16neg(td), sample[(sample_index - 1) & (DELAY_LENGTH - 1)]) +
-					_Q16mul(_Q16add(_Q16one, td), sample[sample_index]);
+	td = _Q16add(td, _Q16neg(_Q16one)); Q16 kftau = ...;
 
-		_Q16 y = _Q16mul(_Q16neg(td), sample[(sample_index - 1) & (DELAY_LENGTH - 1)]) +
-					_Q16mul(_Q16add(_Q16one, td), sample[(sample_index - 1) & (DELAY_LENGTH - 1)]);
-	}
+//The fractional indicies are negated
+
+/*kfy = kf + kftau;
+
+kx_idx = signal_idx;
+kx_alpha = kf;
+
+ky_idx = signal_idx + intPart(kfy);
+ky_alpha = fractPart(kfy);
+
+x = (1 + kx_alpha) * signal[IDX(kx_idx)] - kx_alpha * signal[IDX(kx_idx - 1)];
+y = (1 + ky_alpha) * signal[IDX(ky_idx)] - kx_alpha * signal[IDX(ky_idx - 1)];*/
 
 	_Q15 input = ADCBUF2;
+	sample[sample_idx = (sample_idx + 1) & (DELAY_LENGTH - 1)] = input;
+
+	if(td > 0) return;
+
+	Q16 kf = td;
+	Q16 kfy = kf + kftau;
+
+	uint16 kx_idx = sample_idx;
+	Q15 kx_alpha = kf;
+
+	uint16 ky_idx = sample_idx + intPart(kfy)
+	Q15 ky_alpha = fractPart(kfy);
+
+	_Q15 x = _Q15mul(_Q15neg(kx_alpha), sample[(kx_idx - 1) & (DELAY_LENGTH - 1)]) +
+				_Q15mul(_Q15addOne(kx_alpha), sample[kx_idx]);
+
+	_Q15 y = _Q15mul(_Q15neg(ky_alpha), sample[(ky_idx - 1) & (DELAY_LENGTH - 1)]) +
+				_Q15mul(_Q15addOne(ky_alpha), sample[ky_idx & (DELAY_LENGTH - 1)]);
 
 	unsigned int prev_coeff_loc = (coeff_loc - 1) % FFT_BLOCK_LENGTH;
 	signed int d_input = signal[prev_coeff_loc] - input;
