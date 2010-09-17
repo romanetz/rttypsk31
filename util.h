@@ -1,5 +1,17 @@
 #include "p30f3013.h"
 
+#define Q16 _Q16
+#define Q15 _Q15
+
+#define int8 char
+#define uint8 unsigned char
+
+#define int16 signed short int
+#define uint16 unsigned short int
+
+#define int32 signed int
+#define uint32 unsigned int
+
 #define D4 PORTBbits.RB0
 #define D5 PORTBbits.RB1
 #define D6 PORTBbits.RB2
