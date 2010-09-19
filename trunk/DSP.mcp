@@ -1,14 +1,14 @@
 [HEADER]
 magic_cookie={66E99B07-E706-4689-9E80-9B2582898A13}
 file_version=1.0
-device=PIC18F452
+device=dsPIC33FJ64GP802
 [PATH_INFO]
 BuildDirPolicy=BuildDirIsSourceDir
 dir_src=
 dir_bin=
 dir_tmp=
 dir_sin=
-dir_inc=C:\Program Files\Microchip\MPLAB C30\include
+dir_inc=C:\Program Files\Microchip\MPLAB C30\support\generic\h;C:\Program Files\Microchip\MPLAB C30\support\dsPIC33F\h;C:\Program Files\Microchip\MPLAB C30\include
 dir_lib=C:\Program Files\Microchip\MPLAB C30\lib
 dir_lkr=
 [CAT_FILTERS]
@@ -33,6 +33,7 @@ file_005=.
 file_006=.
 file_007=.
 file_008=.
+file_009=.
 [GENERATED_FILES]
 file_000=no
 file_001=no
@@ -43,6 +44,7 @@ file_005=no
 file_006=no
 file_007=no
 file_008=no
+file_009=no
 [OTHER_FILES]
 file_000=no
 file_001=no
@@ -53,6 +55,7 @@ file_005=no
 file_006=no
 file_007=no
 file_008=no
+file_009=no
 [FILE_INFO]
 file_000=main.c
 file_001=sample.s
@@ -62,14 +65,15 @@ file_004=C:\Program Files\Microchip\MPLAB C30\support\generic\h\dsp.h
 file_005=C:\Program Files\Microchip\MPLAB C30\support\dsPIC30F\h\p30f3013.h
 file_006=HD44780.h
 file_007=util.h
-file_008=linker.gld
+file_008=C:\Program Files\Microchip\MPLAB C30\support\dsPIC33F\h\p33FJ64GP802.h
+file_009=linker.gld
 [SUITE_INFO]
 suite_guid={479DDE59-4D56-455E-855E-FFF59A3DB57E}
 suite_state=
 [TOOL_SETTINGS]
 TS{7D9C6ECE-785D-44CB-BA22-17BF2E119622}=-g
 TS{25AC22BD-2378-4FDB-BFB6-7345A15512D3}=-g
-TS{7DAC9A1D-4C45-45D6-B25A-D117C74E8F5A}=-Map="$(TARGETBASE).map" -o"$(TARGETBASE).$(TARGETSUFFIX)"
+TS{7DAC9A1D-4C45-45D6-B25A-D117C74E8F5A}=-o"$(BINDIR_)$(TARGETBASE).$(TARGETSUFFIX)"
 TS{509E5861-1E2A-483B-8B6B-CA8DB7F2DD78}=
 [INSTRUMENTED_TRACE]
 enable=0

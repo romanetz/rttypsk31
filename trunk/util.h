@@ -1,7 +1,4 @@
-#include "p30f3013.h"
-
-#define Q16 _Q16
-#define Q15 _Q15
+#include "p33Fxxxx.h"
 
 #define int8 char
 #define uint8 unsigned char
