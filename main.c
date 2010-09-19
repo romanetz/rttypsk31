@@ -1,10 +1,11 @@
 #include "dsp.h"
+#include "libq.h"
+
 #include "limits.h"
 #include "float.h"
 #include "math.h"
 
 #include "HD44780.h"
-#include "RTTY.h"
 
 #define DELAY_LENGTH 16
 
@@ -16,6 +17,12 @@
 
 //This just wraps around all the other intializiation functions
 void init();
+
+void initIO();
+void initADC();
+
+//Initialize all the RTTY decode junk
+void initRTTY();
 
 //Baud timer control functions
 void initBaudTimer();
@@ -32,8 +39,8 @@ void printRTTY(unsigned int character);
 void delay32_2(unsigned long int delay);
 
 //signed int spacevar[FFT_BLOCK_LENGTH] __attribute__ ((space (xmemory), aligned (FFT_BLOCK_LENGTH * 2)));
-unsigned short int signal_index;
-fractional signal[DELAY_LENGTH] __attribute__ ((space (xmemory)));
+unsigned short int sample_idx;
+_Q15 sample[DELAY_LENGTH] __attribute__ ((space (xmemory)));
 
 #define RTTY_NULL 0b10000000
 #define RTTY_LF 0b10000001
@@ -140,7 +147,9 @@ int main(void)
 
 //Initialize everything
 void init() {
-	signal_index = 0;
+	sample_idx = 0;
+
+	initRTTY();
 
 	initIO();
 	initADC();
@@ -170,50 +179,104 @@ void initADC() {
 	ADCON1bits.ASAM = 1;
 }
 
-_Q16 makeQ16(_Q15 in) {
-	return _Q16(in) << 1;
+_Q16 td,
+	D0, D1, kftau,
+	negOne,
+	atan_lookup_table[16][16];
+
+void initRTTY() {
+	const float pi = 3.14159265f;
+
+	float Fs, Ts,
+		psi,
+		tau,
+		Fmark, Fspace,
+		F0, W0, T0,
+		K1, G1;
+
+	psi = PI / 3.0f;
+
+	Fs = (float)SAMPLE_RATE;
+	Ts = (1.0f / Fs);
+	Fmark = 1275.0f;
+	Fspace = 1445.0f;
+	F0 = (Fmark + Fspace) / 2.0f;
+	W0 = 2.0f * pi * F0;
+	T0 = 1.0f / F0;
+
+	tau = psi / W0;
+
+	K1 = 1.0f;
+	G1 = K1 / W0;
+
+	D0 = _Q16ftoi(Fs * T0);
+	D1 = _Q16ftoi(Fs * G1);
+	kftau = _Q16ftoi(Fs * tau);
+	td = kftau;
+	negOne = _Q16ftoi(-1.0f);
+
+	uint16 ix, iy;
+	for(ix = 0; ix < 16; ix++) {
+		for(iy = 0; iy < 16; iy++) {
+			//float x = (ix & 0x8) ?  -1.0f * float(ix & 0x7) : float(ix & 0x7),
+			//	y = (iy & 0x8) ?  -1.0f * float(iy & 0x7) : float(iy & 0x7),
+			//	atan = 0.0f;
+
+			//atan = atan2f(y, x);
+
+			//atan_lookup_table[iy][ix] = _Q16ftoi(atan);
+		}
+	}
 }
 
-_Q15 makeQ15(_Q16 in) {
-	return _Q15(in >> 1);
-}
-
-_Q16 td = 0;
-_Q16 _Q16one = (_Q16)0x00010000;
 _Q15 _Q15addOne(_Q15 input) {
-	return _Q15 ^ 0x80000000;
+	return input ^ 0x8000;
 }
 
-void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void)
-{
-	td = _Q16add(td, _Q16neg(_Q16one)); Q16 kftau = ...;
+_Q16 atan_lookup(_Q15 y, _Q15 x) {
+	uint16 _x = x;
+	uint16 _y = y;
 
-//The fractional indicies are negated
+	x >>= 12;
+	y >>= 12;
 
-/*kfy = kf + kftau;
+	x &= 0xF;
+	y &= 0xF;
 
-kx_idx = signal_idx;
-kx_alpha = kf;
+	return atan_lookup_table[y][x];
+}
 
-ky_idx = signal_idx + intPart(kfy);
-ky_alpha = fractPart(kfy);
+int16 intPart(_Q16 x) {
+	return (int16)(x >> 16 & 0xFFFF);
+}
 
-x = (1 + kx_alpha) * signal[IDX(kx_idx)] - kx_alpha * signal[IDX(kx_idx - 1)];
-y = (1 + ky_alpha) * signal[IDX(ky_idx)] - kx_alpha * signal[IDX(ky_idx - 1)];*/
+_Q15 fractPart(_Q16 x) {
+	_Q15 tx = (x >> 1) & 0xFFFF;
+	
+	if(x & 0x80000000) // If x is negative
+		tx |= 0x8000;
+		
+	return tx;
+}
+
+void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) {
+	td = _Q16add(td, negOne);
 
 	_Q15 input = ADCBUF2;
-	sample[sample_idx = (sample_idx + 1) & (DELAY_LENGTH - 1)] = input;
+
+	sample_idx = (sample_idx + 1) & (DELAY_LENGTH - 1);
+	sample[sample_idx] = input;
 
 	if(td > 0) return;
 
-	Q16 kf = td;
-	Q16 kfy = kf + kftau;
+	_Q16 kf = td;
+	_Q16 kfy = kf + kftau;
 
 	uint16 kx_idx = sample_idx;
-	Q15 kx_alpha = kf;
+	_Q15 kx_alpha = kf;
 
-	uint16 ky_idx = sample_idx + intPart(kfy)
-	Q15 ky_alpha = fractPart(kfy);
+	uint16 ky_idx = sample_idx + intPart(kfy);
+	_Q15 ky_alpha = fractPart(kfy);
 
 	_Q15 x = _Q15mul(_Q15neg(kx_alpha), sample[(kx_idx - 1) & (DELAY_LENGTH - 1)]) +
 				_Q15mul(_Q15addOne(kx_alpha), sample[kx_idx]);
@@ -221,37 +284,10 @@ y = (1 + ky_alpha) * signal[IDX(ky_idx)] - kx_alpha * signal[IDX(ky_idx - 1)];*/
 	_Q15 y = _Q15mul(_Q15neg(ky_alpha), sample[(ky_idx - 1) & (DELAY_LENGTH - 1)]) +
 				_Q15mul(_Q15addOne(ky_alpha), sample[ky_idx & (DELAY_LENGTH - 1)]);
 
-	unsigned int prev_coeff_loc = (coeff_loc - 1) % FFT_BLOCK_LENGTH;
-	signed int d_input = signal[prev_coeff_loc] - input;
+	_Q16 e = atan_lookup(x, y);
+	_Q16 cd = _Q16mul(D1, e);
 
-	if(d_signal[coeff_loc] < 0) {
-		total += d_signal[coeff_loc];
-	} else {
-		total -= d_signal[coeff_loc];
-	}
-
-	//NOTE! REAL SAMPLE FUNCTION HERE
-	sample(&signal[0], &signal[0], coeff_loc, input);
-	d_signal[coeff_loc] = d_input;
-	
-	if(d_input < 0) {
-		total -= d_input;
-	} else {
-		total += d_input;
-	}
-
-	coeff_loc++;
-	coeff_loc %= FFT_BLOCK_LENGTH;
-
-	if(signal) {
-		if(mark_exist > space_exist) {
-			mark = 1; space = 0;
-		} else {
-			mark = 0; space = 1;
-		}
-	} else {
-		mark = 0; space = 0;
-	}
+	td = _Q16add(td, _Q16sub(D0 - cd));
 
 	IFS0bits.T3IF = 0; // clear interrupt flag
 }
@@ -307,11 +343,11 @@ void printRTTY(unsigned int character) {
 	sent >>= 9;
 	sent &= 0x1F;
 
-	buffer[buffer_x] = sent2;
+	//buffer[buffer_x] = sent2;
 	//buffer_x++;
-	if(buffer_x > 31) {
-		character = RTTY_FIGURES_TO_HANTRONIX[sent];
-	}
+	//if(buffer_x > 31) {
+	//	character = RTTY_FIGURES_TO_HANTRONIX[sent];
+	//}
 	//comDisplay(0, HD_CMD_clear);
 	switch(rtty_mode) {
 		case RTTY_LTRS:
@@ -332,11 +368,11 @@ void printRTTY(unsigned int character) {
 			printDisplay(HD_space);
 			break;
 		case (RTTY_CR):
-			if(display_offset < 8) {
+			/*if(display_offset < 8) {
 				display_offset = 8;
 			} else {
 				display_offset = 16;
-			}
+			}*/
 			break;
 		case (RTTY_FIGS):
 			rtty_mode = RTTY_FIGS;
@@ -358,7 +394,7 @@ void printRTTY(unsigned int character) {
 			printDisplay(character);
 			break;
 	}
-	chars_sent++;
+	//chars_sent++;
 }
 
 
