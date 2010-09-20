@@ -12,8 +12,12 @@
 //#define MARK_FREQUENCY 1275.0
 //#define SPACE_FREQUENCY 1445.0
 
-#define MCLK 29480000
-#define SAMPLE_RATE 10236
+_FOSCSEL(FNOSC_FRC);
+
+#define Fosc 7370000
+#define Fy (Fosc / 2)
+#define SAMPLE_RATE 8000
+
 
 //This just wraps around all the other intializiation functions
 void init();
@@ -135,8 +139,6 @@ int main(void)
 	init();
 	IPC1 = 0xFFFF;
 
-	//IEC0bits.SI2CIE = 1;
-	//IEC0bits.ADIE = 1;
 	IEC0bits.T3IE = 1;
 	IFS0bits.T3IF = 0;
 
@@ -147,15 +149,16 @@ int main(void)
 
 //Initialize everything
 void init() {
-	sample_idx = 0;
-
-	initRTTY();
-
 	initIO();
 	initADC();
 	initBaudTimer();
-	initSampleTimer();
 	initDisplay();
+	
+	sample_idx = 0;
+	
+	initRTTY();
+	
+	initSampleTimer(); // We start this timer last so that processing will only begin after all initialization is finished
 }
 
 void initIO() {
@@ -164,19 +167,27 @@ void initIO() {
 	//Next bit nothing
 	//Next 2 bits (from left) are input for rotary encoder
 	//Last bits are outputs for display
+	TRISA = 0xFFFF;
 	TRISB = 0b1111000000;
-	TRISD = 0x0000;
 }
 
 void initADC() {
-	initADC();
-	ADPCFGbits.PCFG9 = 0;
-	ADCON1 = 0x03E4;
-	ADCON2 = 0x0008;
-	ADCON3 = 0x000A;
-	ADCHS = 0x0009;
-	ADCON1bits.ADON = 1;
-	ADCON1bits.ASAM = 1;
+	AD1PCFGLbits.PCFG0 = 0;
+	AD1CON1bits.ADON = 0;
+	AD1CON1bits.AD12B = 1; // Enable 12bit conversion
+	AD1CON1bits.FORM = 3; // Signed fractional output (_Q15)0x03E0;
+	AD1CON1bits.SSRC = 7; // Automatic conversion
+	AD1CON1bits.ASAM = 0; // Sampling begines when ADCON1bits.SAMP is set
+	AD1CON2 = 0x0000;
+	AD1CON3bits.ADRC = 0; // Clock derived from system clock
+	AD1CON3bits.SAMC = 20; // Sample time = 20 * Tad. Minimum of 14 * Tad for 12bit conversion
+	AD1CON3bits.ADCS = 39; // Tad must be > 117.6nS. 1Mhz clock -> 1uS Tad
+					      // At max Tcy is 40Mhz, so just divide by 40 and we'll be fine
+					     
+	//Total ADC time is 17 Tad, or 23 * 40 * Ty, or 920 clocks
+	AD1CHS0 = 0x0000;
+	
+	AD1CON1bits.ADON = 1; // Enable ADC
 }
 
 _Q16 td,
@@ -262,7 +273,8 @@ _Q15 fractPart(_Q16 x) {
 void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) {
 	td = _Q16add(td, negOne);
 
-	_Q15 input = ADCBUF2;
+	_Q15 input = ADC1BUF0;
+	AD1CON1bits.SAMP = 1;
 
 	sample_idx = (sample_idx + 1) & (DELAY_LENGTH - 1);
 	sample[sample_idx] = input;
@@ -271,8 +283,10 @@ void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) 
 
 	_Q16 kf = td;
 	_Q16 kfy = kf + kftau;
+	fractional a = 0x4000, b = 0x4000;
+	fractional c = a * b;
 
-	uint16 kx_idx = sample_idx;
+	/*uint16 kx_idx = sample_idx;
 	_Q15 kx_alpha = kf;
 
 	uint16 ky_idx = sample_idx + intPart(kfy);
@@ -285,26 +299,18 @@ void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) 
 				_Q15mul(_Q15addOne(ky_alpha), sample[ky_idx & (DELAY_LENGTH - 1)]);
 
 	_Q16 e = atan_lookup(x, y);
-	_Q16 cd = _Q16mul(D1, e);
+	_Q16 cd = _Q16mul(D1, e);*/
 
-	td = _Q16add(td, _Q16sub(D0 - cd));
+	//td = _Q16add(td, _Q16add(D0, _Q16neg(cd)));
 
 	IFS0bits.T3IF = 0; // clear interrupt flag
 }
 
-void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _SI2CInterrupt(void) {
-	if(I2CSTATbits.D_A == 1 && I2CSTATbits.RBF == 1) {
-		//Do something with I2CRCV
-	}
-
-	IFS0bits.SI2CIF = 0;
-}
-
 //Timer control routines
 void initBaudTimer() {
-	T1CON = 0x8030;
 	PR1 = 0xFFFF;
 	TMR1 = 0x0000;
+	T1CONbits.TON = 1;
 }
 
 void restartBaudTimer() {
@@ -315,13 +321,19 @@ unsigned int getBaudTime() {
 	return TMR1;
 }
 
-#define SAMPLE_DELAY MCK/SAMPLE_RATE
-//We do the math manually, and get 720
-//Timer 3 generates a special ADC signal, so we use it
 void initSampleTimer() {
-	T3CON = 0x8000;
-	PR3 = 720;
-	TMR3 = 0x0000;
+	T3CONbits.TON = 0; // Disable Timer
+	T3CONbits.TCS = 0; // Select internal instruction cycle clock
+	T3CONbits.TGATE = 0; // Disable Gated Timer mode
+	T3CONbits.TCKPS = 0b00; // Select 1:1 Prescaler
+	TMR3 = 0x00; // Clear timer register
+	
+	PR3 = Fy / SAMPLE_RATE; // Load the period value
+	
+	IPC2bits.T3IP = 0x01; // Set Timer1 Interrupt Priority Level
+	IFS0bits.T3IF = 0; // Clear Timer1 Interrupt Flag
+	IEC0bits.T3IE = 1; // Enable Timer1 interrupt
+	T3CONbits.TON = 1;
 }
 
 unsigned int validateRTTY(unsigned int character) {

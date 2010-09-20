@@ -8,9 +8,10 @@
    no matter where MPLAB C30 is installed. */
    
 SEARCH_DIR(..\..\..\..\lib)
-SEARCH_DIR("C:\Program Files\Microchip\MPLAB C30\support\gld\")
+SEARCH_DIR("C:\Program Files\Microchip\MPLAB C30\support\dsPIC33F\gld")
 INPUT(-ldsp)
 INPUT(-lpic30)
 INPUT(-lm)
 INPUT(-lc)
-INCLUDE "p30f3013.gld"
+INPUT(-lq)
+INCLUDE "p33FJ64GP802.gld"
