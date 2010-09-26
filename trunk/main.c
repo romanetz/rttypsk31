@@ -6,8 +6,9 @@
 #include "math.h"
 
 #include "HD44780.h"
+#include "fractionaltypes.h"
 
-#define DELAY_LENGTH 16
+#define DELAY_LENGTH 32
 
 //#define MARK_FREQUENCY 1275.0
 //#define SPACE_FREQUENCY 1445.0
@@ -44,7 +45,9 @@ void delay32_2(unsigned long int delay);
 
 //signed int spacevar[FFT_BLOCK_LENGTH] __attribute__ ((space (xmemory), aligned (FFT_BLOCK_LENGTH * 2)));
 unsigned short int sample_idx;
-_Q15 sample[DELAY_LENGTH] __attribute__ ((space (xmemory)));
+F15 sample[DELAY_LENGTH] __attribute__ ((space (xmemory)));
+unsigned int ed_idx = 0;
+F16 ed[256];
 
 #define RTTY_NULL 0b10000000
 #define RTTY_LF 0b10000001
@@ -152,7 +155,7 @@ void init() {
 	initIO();
 	initADC();
 	initBaudTimer();
-	initDisplay();
+	//initDisplay();
 	
 	sample_idx = 0;
 	
@@ -175,13 +178,13 @@ void initADC() {
 	AD1PCFGLbits.PCFG0 = 0;
 	AD1CON1bits.ADON = 0;
 	AD1CON1bits.AD12B = 1; // Enable 12bit conversion
-	AD1CON1bits.FORM = 3; // Signed fractional output (_Q15)0x03E0;
+	AD1CON1bits.FORM = 0; // Signed fractional output (_Q15)0x03E0;
 	AD1CON1bits.SSRC = 7; // Automatic conversion
 	AD1CON1bits.ASAM = 0; // Sampling begines when ADCON1bits.SAMP is set
 	AD1CON2 = 0x0000;
 	AD1CON3bits.ADRC = 0; // Clock derived from system clock
 	AD1CON3bits.SAMC = 20; // Sample time = 20 * Tad. Minimum of 14 * Tad for 12bit conversion
-	AD1CON3bits.ADCS = 39; // Tad must be > 117.6nS. 1Mhz clock -> 1uS Tad
+	AD1CON3bits.ADCS = 10; // Tad must be > 117.6nS. 1Mhz clock -> 1uS Tad
 					      // At max Tcy is 40Mhz, so just divide by 40 and we'll be fine
 					     
 	//Total ADC time is 17 Tad, or 23 * 40 * Ty, or 920 clocks
@@ -190,7 +193,7 @@ void initADC() {
 	AD1CON1bits.ADON = 1; // Enable ADC
 }
 
-_Q16 td,
+F16 td,
 	D0, D1, kftau,
 	negOne,
 	atan_lookup_table[16][16];
@@ -220,88 +223,120 @@ void initRTTY() {
 	K1 = 1.0f;
 	G1 = K1 / W0;
 
-	D0 = _Q16ftoi(Fs * T0);
-	D1 = _Q16ftoi(Fs * G1);
-	kftau = _Q16ftoi(Fs * tau);
+	D0 = floatToF16(Fs * T0);
+	D1 = floatToF16(Fs * G1);
+	kftau = floatToF16(Fs * tau);
 	td = kftau;
-	negOne = _Q16ftoi(-1.0f);
 
-	uint16 ix, iy;
-	for(ix = 0; ix < 16; ix++) {
-		for(iy = 0; iy < 16; iy++) {
-			//float x = (ix & 0x8) ?  -1.0f * float(ix & 0x7) : float(ix & 0x7),
-			//	y = (iy & 0x8) ?  -1.0f * float(iy & 0x7) : float(iy & 0x7),
-			//	atan = 0.0f;
+	int16 ix, iy;
+	for(ix = -8; ix < 8; ix++) {
+		for(iy = -8; iy < 8; iy++) {
+			float x = (float)ix, y = (float)iy,	atan = 0.0f;
 
-			//atan = atan2f(y, x);
+			if(y == 0) {
+				if(x >= 0) {
+					atan = 0.0f;
+				} else {
+					atan = -1.0f * pi;
+				}	
+			} else if(x == 0) {
+				if(y > 0) {
+					atan = pi / 2.0f;
+				} else {
+					atan = pi / -2.0f;
+				}	
+			} else {	
+				atan = atan2f(y, x);
+			}	
 
-			//atan_lookup_table[iy][ix] = _Q16ftoi(atan);
+			atan_lookup_table[iy + 8][ix + 8] = floatToF16(atan);
 		}
 	}
 }
 
-_Q15 _Q15addOne(_Q15 input) {
-	return input ^ 0x8000;
-}
-
-_Q16 atan_lookup(_Q15 y, _Q15 x) {
-	uint16 _x = x;
-	uint16 _y = y;
-
-	x >>= 12;
-	y >>= 12;
-
-	x &= 0xF;
-	y &= 0xF;
-
-	return atan_lookup_table[y][x];
-}
-
-int16 intPart(_Q16 x) {
-	return (int16)(x >> 16 & 0xFFFF);
-}
-
-_Q15 fractPart(_Q16 x) {
-	_Q15 tx = (x >> 1) & 0xFFFF;
+uint8 count_leading_bits(uint16 x) {
+	uint8 i = 0;
 	
-	if(x & 0x80000000) // If x is negative
-		tx |= 0x8000;
-		
-	return tx;
+	uint16 lbit = x & 0x4000;
+	for(i = 0; i < 16; i++) {
+		if((x & 0x4000) != lbit)
+			break;
+			
+		x <<= 1;
+	}
+	
+	return i;
+}	
+
+F16 atan_lookup(F15 y, F15 x) {
+	F15 _x = x;
+	F15 _y = y;
+	
+	uint8 xs = count_leading_bits(x) - 1;
+	uint8 ys = count_leading_bits(y) - 1;
+	
+	uint8 s = 12 - ((xs < ys) ? xs : ys);
+
+	x >>= s;
+	y >>= s;
+
+	x += 8;
+	y += 8;
+
+	F16 retval = atan_lookup_table[y][x];
+	return retval;
 }
 
 void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) {
-	td = _Q16add(td, negOne);
+	td = F16dec(td);
 
-	_Q15 input = ADC1BUF0;
+	F15 input = (ADC1BUF0 - 0x0800) << 4;
 	AD1CON1bits.SAMP = 1;
 
 	sample_idx = (sample_idx + 1) & (DELAY_LENGTH - 1);
 	sample[sample_idx] = input;
 
-	if(td > 0) return;
+	if(td < 0) {
+		F16 kfx = td;
+		F16 kfy = F16sub(kfx, kftau);
+		
+		uint16 kx_idx = sample_idx;
+		F15 kx_alpha = F16ToF15(kfx);
 
-	_Q16 kf = td;
-	_Q16 kfy = kf + kftau;
-	fractional a = 0x4000, b = 0x4000;
-	fractional c = a * b;
-
-	/*uint16 kx_idx = sample_idx;
-	_Q15 kx_alpha = kf;
-
-	uint16 ky_idx = sample_idx + intPart(kfy);
-	_Q15 ky_alpha = fractPart(kfy);
-
-	_Q15 x = _Q15mul(_Q15neg(kx_alpha), sample[(kx_idx - 1) & (DELAY_LENGTH - 1)]) +
-				_Q15mul(_Q15addOne(kx_alpha), sample[kx_idx]);
-
-	_Q15 y = _Q15mul(_Q15neg(ky_alpha), sample[(ky_idx - 1) & (DELAY_LENGTH - 1)]) +
-				_Q15mul(_Q15addOne(ky_alpha), sample[ky_idx & (DELAY_LENGTH - 1)]);
-
-	_Q16 e = atan_lookup(x, y);
-	_Q16 cd = _Q16mul(D1, e);*/
-
-	//td = _Q16add(td, _Q16add(D0, _Q16neg(cd)));
+		uint16 ky_idx = sample_idx + F16Toint(kfy);
+		F15 ky_alpha = F16ToF15(kfy);
+	
+		F15 x = F15add(
+					F15mul(
+						F15neg(kx_alpha), sample[(kx_idx - 1) & (DELAY_LENGTH - 1)]
+						),
+					F15mul(
+						F15inc(kx_alpha), sample[kx_idx]
+						)
+					);
+	
+		F15 y = F15add(
+					F15mul(
+						F15neg(ky_alpha), sample[(ky_idx - 1) & (DELAY_LENGTH - 1)]
+						),
+					F15mul(
+						F15inc(ky_alpha), sample[ky_idx & (DELAY_LENGTH - 1)]
+						)
+					);
+	
+		F16 e = atan_lookup(x, y);
+		ed[ed_idx] = e;
+		
+		if(ed_idx == 255) {
+			ed_idx = 0;
+		} else {
+			ed_idx++;
+		}		
+		
+		F16 cd = F16mul(D1, e);
+	
+		td = F16add(td, F16add(D0, F16neg(cd)));
+	}
 
 	IFS0bits.T3IF = 0; // clear interrupt flag
 }
@@ -370,7 +405,7 @@ void printRTTY(unsigned int character) {
 			break;
 	}
 
-	switch(character) {
+	/*switch(character) {
 		case (RTTY_NULL):
 			printDisplay(HD_space);
 			break;
@@ -380,11 +415,11 @@ void printRTTY(unsigned int character) {
 			printDisplay(HD_space);
 			break;
 		case (RTTY_CR):
-			/*if(display_offset < 8) {
+			if(display_offset < 8) {
 				display_offset = 8;
 			} else {
 				display_offset = 16;
-			}*/
+			}
 			break;
 		case (RTTY_FIGS):
 			rtty_mode = RTTY_FIGS;
@@ -405,7 +440,7 @@ void printRTTY(unsigned int character) {
 		default:
 			printDisplay(character);
 			break;
-	}
+	}*/
 	//chars_sent++;
 }
 
