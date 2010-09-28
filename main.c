@@ -8,7 +8,7 @@
 #include "HD44780.h"
 #include "fractionaltypes.h"
 
-#define DELAY_LENGTH 32
+#define DELAY_LENGTH 16
 
 //#define MARK_FREQUENCY 1275.0
 //#define SPACE_FREQUENCY 1445.0
@@ -47,7 +47,7 @@ void delay32_2(unsigned long int delay);
 unsigned short int sample_idx;
 F15 sample[DELAY_LENGTH] __attribute__ ((space (xmemory)));
 unsigned int ed_idx = 0;
-F16 ed[256];
+F16 ed[128];
 
 #define RTTY_NULL 0b10000000
 #define RTTY_LF 0b10000001
@@ -224,7 +224,7 @@ void initRTTY() {
 	G1 = K1 / W0;
 
 	D0 = floatToF16(Fs * T0);
-	D1 = floatToF16(Fs * G1);
+	D1 = floatToF15(Fs * G1);
 	kftau = floatToF16(Fs * tau);
 	td = kftau;
 
@@ -254,34 +254,50 @@ void initRTTY() {
 	}
 }
 
-uint8 count_leading_bits(uint16 x) {
-	uint8 i = 0;
+uint8 count_leading_unused_bits(uint16 x) {
+	uint8 i = 0, j = 0;
 	
-	uint16 lbit = x & 0x4000;
-	for(i = 0; i < 16; i++) {
-		if((x & 0x4000) != lbit)
-			break;
-			
+	uint8 sign = (x >> 15) & 0x1;
+	
+	if(sign == 0x1)
+		x != x;
+	
+	x <<= 1;
+	
+	/*while((x & 0xF000) == 0 && i < 16) {
+		i += 4;
+		x <<= 1;
+	}*/
+	
+	while((x & 0x8000) == 0 && i < 16) {
+		i++;
 		x <<= 1;
 	}
 	
 	return i;
-}	
+}
+
+uint16 remove_leading_bits(uint8 bitcount, uint16 x) {
+	return (x & 0x8000) | ((x << bitcount) & 0x7FFF);
+}
 
 F16 atan_lookup(F15 y, F15 x) {
 	F15 _x = x;
 	F15 _y = y;
 	
-	uint8 xs = count_leading_bits(x) - 1;
-	uint8 ys = count_leading_bits(y) - 1;
+	uint8 xs = count_leading_unused_bits(x);
+	uint8 ys = count_leading_unused_bits(y);
 	
-	uint8 s = 12 - ((xs < ys) ? xs : ys);
+	uint8 s = (xs < ys) ? xs : ys;
 
-	x >>= s;
-	y >>= s;
+	x = remove_leading_bits(s, x);	
+	y = remove_leading_bits(s, y);	
 
-	x += 8;
-	y += 8;
+	x += 0x8000;
+	y += 0x8000;
+	
+	x = (x >> 12) & 0xF;
+	y = (y >> 12) & 0xF;
 
 	F16 retval = atan_lookup_table[y][x];
 	return retval;
@@ -289,23 +305,27 @@ F16 atan_lookup(F15 y, F15 x) {
 
 void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) {
 	td = F16dec(td);
-
+		
 	F15 input = (ADC1BUF0 - 0x0800) << 4;
 	AD1CON1bits.SAMP = 1;
 
 	sample_idx = (sample_idx + 1) & (DELAY_LENGTH - 1);
 	sample[sample_idx] = input;
+	
+	F16 a = 0xFF400000, b = 0x00008000;
+	
+	b = F16unsafeMul(4, a, b)
 
 	if(td < 0) {
-		F16 kfx = td;
-		F16 kfy = F16sub(kfx, kftau);
+		F16 kfx = F16sub(td, kftau);
+		F16 kfy = td;
 		
-		uint16 kx_idx = sample_idx;
+		uint16 kx_idx = sample_idx + F16Toint(kfx);
 		F15 kx_alpha = F16ToF15(kfx);
-
-		uint16 ky_idx = sample_idx + F16Toint(kfy);
-		F15 ky_alpha = F16ToF15(kfy);
 	
+		uint16 ky_idx = sample_idx;
+		F15 ky_alpha = F16ToF15(kfy);
+
 		F15 x = F15add(
 					F15mul(
 						F15neg(kx_alpha), sample[(kx_idx - 1) & (DELAY_LENGTH - 1)]
@@ -325,17 +345,17 @@ void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) 
 					);
 	
 		F16 e = atan_lookup(x, y);
-		ed[ed_idx] = e;
-		
-		if(ed_idx == 255) {
+		ed[ed_idx] = e ;
+	
+		if(ed_idx == 127) {
 			ed_idx = 0;
 		} else {
 			ed_idx++;
-		}		
+		}
 		
-		F16 cd = F16mul(D1, e);
+		F16 cd = F16unsafeMul(4, D1, e);
 	
-		td = F16add(td, F16add(D0, F16neg(cd)));
+		td = F16add(td, F16sub(D0, cd));
 	}
 
 	IFS0bits.T3IF = 0; // clear interrupt flag
