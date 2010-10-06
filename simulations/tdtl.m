@@ -9,7 +9,7 @@ Wmark = 2 * pi() * Fmark;
 Wspace = 2 * pi() * Fspace;
 
 %Generate input signal
-dt = 1 / 16000;
+dt = 1 / 6900;
 sig_vals = gen_rtty(1 / dt, Fspace, Fmark, 1 / 70, '01');
 sig_time = (0 : length(sig_vals) - 1) * dt;
 runtime = sig_time(length(sig_time));
