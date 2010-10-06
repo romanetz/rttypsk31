@@ -23,7 +23,7 @@ Wspace = 2 * pi() * Fspace;
 
 %Generate input signal
 dt = 1 / 8000;
-sig_vals = round((2.0 ^ 12) * gen_rtty(1 / dt, Fspace, Fmark, 1 / 70, '01'));
+sig_vals = round((2.0 ^ 12) * gen_rtty(1 / dt, Fspace, Fmark, 1 / 70, '01010101'));
 sig_time = (0 : length(sig_vals) - 1) * dt;
 runtime = sig_time(length(sig_time));
 
@@ -92,11 +92,11 @@ while kf < length(sig_vals)
     e_plot = [e_plot e];
 end
 
-subplot(2, 1, 1);
-hold off;
-plot(0 : dt : runtime, interp1(sig_time, sig_vals, 0 : dt : runtime));
-hold on;
-stem(t_plot, interp1(sig_time, sig_vals, t_plot), '*r');
+%subplot(2, 1, 1);
+%hold off;
+%plot(0 : dt : runtime, interp1(sig_time, sig_vals, 0 : dt : runtime));
+%hold on;
+%stem(t_plot, interp1(sig_time, sig_vals, t_plot), '*r');
 
-subplot(2, 1, 2);
+%subplot(2, 1, 2);
 plot(t_plot, e_plot);

@@ -8,14 +8,14 @@
 #include "HD44780.h"
 #include "fractionaltypes.h"
 
-#define DELAY_LENGTH 16
+#define DELAY_LENGTH 64
 
 //#define MARK_FREQUENCY 1275.0
 //#define SPACE_FREQUENCY 1445.0
 
-_FOSCSEL(FNOSC_FRC);
+//_FOSCSEL(FNOSC_FRC);
 
-#define Fosc 7370000
+#define Fosc 6400000
 #define Fy (Fosc / 2)
 #define SAMPLE_RATE 8000
 
@@ -47,7 +47,7 @@ void delay32_2(unsigned long int delay);
 unsigned short int sample_idx;
 F15 sample[DELAY_LENGTH] __attribute__ ((space (xmemory)));
 unsigned int ed_idx = 0;
-F16 ed[128];
+F16 ed[256];
 
 #define RTTY_NULL 0b10000000
 #define RTTY_LF 0b10000001
@@ -155,7 +155,7 @@ void init() {
 	initIO();
 	initADC();
 	initBaudTimer();
-	//initDisplay();
+	initDisplay();
 	
 	sample_idx = 0;
 	
@@ -171,7 +171,6 @@ void initIO() {
 	//Next 2 bits (from left) are input for rotary encoder
 	//Last bits are outputs for display
 	TRISA = 0xFFFF;
-	TRISB = 0b1111000000;
 }
 
 void initADC() {
@@ -183,8 +182,8 @@ void initADC() {
 	AD1CON1bits.ASAM = 0; // Sampling begines when ADCON1bits.SAMP is set
 	AD1CON2 = 0x0000;
 	AD1CON3bits.ADRC = 0; // Clock derived from system clock
-	AD1CON3bits.SAMC = 20; // Sample time = 20 * Tad. Minimum of 14 * Tad for 12bit conversion
-	AD1CON3bits.ADCS = 10; // Tad must be > 117.6nS. 1Mhz clock -> 1uS Tad
+	AD1CON3bits.SAMC = 14; // Sample time = 20 * Tad. Minimum of 14 * Tad for 12bit conversion
+	AD1CON3bits.ADCS = 5; // Tad must be > 117.6nS. 1Mhz clock -> 1uS Tad
 					      // At max Tcy is 40Mhz, so just divide by 40 and we'll be fine
 					     
 	//Total ADC time is 17 Tad, or 23 * 40 * Ty, or 920 clocks
@@ -311,10 +310,6 @@ void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) 
 
 	sample_idx = (sample_idx + 1) & (DELAY_LENGTH - 1);
 	sample[sample_idx] = input;
-	
-	F16 a = 0xFF400000, b = 0x00008000;
-	
-	b = F16unsafeMul(4, a, b)
 
 	if(td < 0) {
 		F16 kfx = F16sub(td, kftau);
@@ -346,8 +341,8 @@ void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) 
 	
 		F16 e = atan_lookup(x, y);
 		ed[ed_idx] = e ;
-	
-		if(ed_idx == 127) {
+
+		if(ed_idx == 255) {
 			ed_idx = 0;
 		} else {
 			ed_idx++;
