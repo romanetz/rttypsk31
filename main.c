@@ -47,7 +47,7 @@ void delay32_2(unsigned long int delay);
 unsigned short int sample_idx;
 F15 sample[DELAY_LENGTH] __attribute__ ((space (xmemory)));
 unsigned int ed_idx = 0;
-F16 ed[256];
+F16 ed[64];
 
 #define RTTY_NULL 0b10000000
 #define RTTY_LF 0b10000001
@@ -155,7 +155,7 @@ void init() {
 	initIO();
 	initADC();
 	initBaudTimer();
-	initDisplay();
+	//initDisplay();
 	
 	sample_idx = 0;
 	
@@ -342,7 +342,7 @@ void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) 
 		F16 e = atan_lookup(x, y);
 		ed[ed_idx] = e ;
 
-		if(ed_idx == 255) {
+		if(ed_idx == 63) {
 			ed_idx = 0;
 		} else {
 			ed_idx++;
