@@ -10,7 +10,7 @@ Wspace = 2 * pi() * Fspace;
 
 %Generate input signal
 dt = 1 / 6900;
-sig_vals = gen_rtty(1 / dt, Fspace, Fmark, 1 / 70, '01');
+sig_vals = gen_rtty(1 / dt, Fspace, Fmark, 1 / 70, 'Hello World');
 sig_time = (0 : length(sig_vals) - 1) * dt;
 runtime = sig_time(length(sig_time));
 
@@ -42,6 +42,13 @@ while t < runtime
     % Phase detector
     e = atan2(x, y);
     
+    e = x / y;
+    if(e > pi())
+        e = pi();
+    elseif(e < -pi())
+        e = -pi();
+    end
+    
     % Digital filter (put in a single pole?)
     c = G1 * e;
     
@@ -53,11 +60,15 @@ while t < runtime
     e_plot = [e_plot e];
 end
 
-h = subplot(2, 1, 1);
-hold off;
-plot(0 : dt : runtime, interp1(sig_time, sig_vals, 0 : dt : runtime));
-hold on;
-stem(t_plot, interp1(sig_time, sig_vals, t_plot), '*r');
+%h = subplot(2, 1, 1);
+%hold off;
+%plot(0 : dt : runtime, interp1(sig_time, sig_vals, 0 : dt : runtime));
+%hold on;
+%stem(t_plot, interp1(sig_time, sig_vals, t_plot), '*r');
 
-subplot(2, 1, 2);
+%subplot(2, 1, 2);
 plot(t_plot, e_plot);
+xlabel('Time (s)');
+ylabel('Error Signal');
+title('Detection of 1275hz and 1445hz Signals');
+
