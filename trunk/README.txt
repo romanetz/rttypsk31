@@ -12,7 +12,7 @@ How to use the MATLAB:
 There are three particularly valuable MATLAB scripts worth understanding. The first and second are src/tdtl.m and src/tdtl_psk.m. These are two very similar MATLAB scripts. The first plots the error signal received from an oscillating FSK signal. The second does the same for a PSK modulator. This shows how the TDTL will work for decoding the signals.
 
 The third script is src/gen_rtty_for_mplab_sim.m. This is a function definition that takes who parameters: a message and a filename. This is used to generate test signals for the MPLAB simulations. Currently the message must be the character representation of a binary stream.
-    For instance: gen_rtty_for_mplab_sim('0101', 'myfile.txt') fills the file 'myfile.txt' with the audio samples that represent the message '0101' using standard RTTY symbol frequencies and symbol rates.
+    For instance: gen_rtty_for_mplab_sim('abcd', 'myfile.txt') fills the file 'myfile.txt' with the audio samples that represent the message 'abcd' using standard RTTY symbols, frequencies, and symbol rates.
 
 How to run the MPLAB simulations:
 1. Install MPLAB from the Microchip website
