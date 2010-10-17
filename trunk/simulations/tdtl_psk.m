@@ -6,7 +6,7 @@ deltap = pi;
 
 %Generate input signal
 dt = 1 / 16000;
-sig_vals = gen_psk(1 / dt, F0, deltap, 1 / 70, '00010101');
+sig_vals = gen_psk(1 / dt, F0, deltap, 1 / 70, '010101');
 sig_time = (0 : length(sig_vals) - 1) * dt;
 runtime = sig_time(length(sig_time));
 
@@ -33,23 +33,21 @@ t_plot = [];
 e_plot = [];
 m_plot = [];
 
-while k < length(sig_vals)
+t = tau;
+
+while t < runtime
     % Perform sampling
-    %x = (2.0 ^ 12) * interp1(sig_time, sig_vals, t - tau);
-    %y = (2.0 ^ 12) * interp1(sig_time, sig_vals, t);
-    x = round((2.0 ^ 12) * sig_vals(k - ktau));
-    y = round((2.0 ^ 12) * sig_vals(k));
+    x = interp1(sig_time, sig_vals, t - tau);
+    y = interp1(sig_time, sig_vals, t);
     
     % Phase detector -- Scaling will be internal to tables on proc
-    e = (2.0 ^ 15) * atan2_lookup(x, y) / pi();
+    e = atan2(x, y);
     
     % Digital filter (put in a single pole?)
-    cd = D1 * e;
+    c = G1 * e;
     
     % Time update
-    % t = t + (T0 - c);
-    k = k + D0 - cd;
-    t = dt * k;
+    t = t + (T0 - c);
     
     % Collect values for plotting
     t_plot = [t_plot t];
@@ -57,14 +55,17 @@ while k < length(sig_vals)
     m_plot = [m_plot m];
 end
 
-subplot(2, 1, 1);
+%subplot(2, 1, 1);
 %hold off;
 %plot(0 : dt : runtime, interp1(sig_time, sig_vals, 0 : dt : runtime));
 %hold on;
-stem(t_plot, interp1(sig_time, sig_vals, t_plot), '*r');
+%stem(t_plot, interp1(sig_time, sig_vals, t_plot), '*r');
 
-subplot(2, 1, 2);
-hold off;
-plot(t_plot, e_plot);
-hold on;
-plot(t_plot, m_plot, 'r');
+%subplot(2, 1, 2);
+%hold off;
+stem(t_plot, abs(e_plot));
+xlabel('Time (s)');
+ylabel('Magnitude of Error Signal');
+title('Detection of 70hz Phase Reversals on 1000hz Signal');
+%hold on;
+%stem(t_plot, m_plot, 'r');

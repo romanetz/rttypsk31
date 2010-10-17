@@ -15,7 +15,7 @@
 
 //_FOSCSEL(FNOSC_FRC);
 
-#define Fosc 6400000
+#define Fosc 7370000
 #define Fy (Fosc / 2)
 #define SAMPLE_RATE 8000
 
@@ -28,6 +28,14 @@ void initADC();
 
 //Initialize all the RTTY decode junk
 void initRTTY();
+uint16 symbolIndex;
+uint16 symbolArray[32];
+
+#define none 2
+#define mark 1
+#define space 0
+uint16 currentSymbol;
+uint16 process;
 
 //Baud timer control functions
 void initBaudTimer();
@@ -38,16 +46,16 @@ unsigned int getBaudTime();
 void initSampleTimer();
 
 //RTTY decode utility functions
-unsigned int validateRTTY(unsigned int character);
+uint16 validateRTTY(uint16 character);
 void printRTTY(unsigned int character);
 
 void delay32_2(unsigned long int delay);
 
 //signed int spacevar[FFT_BLOCK_LENGTH] __attribute__ ((space (xmemory), aligned (FFT_BLOCK_LENGTH * 2)));
 unsigned short int sample_idx;
-F15 sample[DELAY_LENGTH] __attribute__ ((space (xmemory)));
+F15 sample[DELAY_LENGTH];// __attribute__ ((space (xmemory)));
 unsigned int ed_idx = 0;
-F16 ed[64];
+F16 ed[256];
 
 #define RTTY_NULL 0b10000000
 #define RTTY_LF 0b10000001
@@ -137,6 +145,8 @@ RTTY_LTRS//0x1F
 int main(void)
 {
 	unsigned int x = 0;
+	
+	symbolIndex = 0;
 
 	RCONbits.SWDTEN = 0;
 	init();
@@ -146,7 +156,117 @@ int main(void)
 	IFS0bits.T3IF = 0;
 
 	//Decode loop
+
+	//Useful Constants
+	const int16 symbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 45.45); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
+	const int16 switchTime = symbolTime / 5;
+	
+	//Decode state variables
+	int32 markTime = 0, spaceTime = 0,
+		decodeSymbol = none, dam = 0;
+		
+	uint16 processMark = 0, processSpace = 0,
+		character = 0, symbolCount = 0;
+		
+	process = 0;
+	
+	restartBaudTimer();
 	while(1) {
+		if(process == 0)
+			continue;
+			
+		uint16 Telaps = getBaudTime();
+		
+		//Watch for a symbol switch
+		//  If an unexpected signal detection change occurs, track it to see if real
+		if(currentSymbol == decodeSymbol) {
+			//If it turns out to be fake, do nothing (because time added to right bin anyway)
+			dam = 0;
+		} else {
+			//If it turns out to be real, evaluate other timer and switch decode symbol 
+			dam += Telaps;
+			
+			if(dam > switchTime) {
+				//If need to switch symbols, evaluate the old decodeSymbol before updating to new
+				switch(decodeSymbol) {
+					case mark:
+						if(currentSymbol == space) spaceTime = dam - Telaps; //The '- Telaps' term avoids double adding
+						markTime -= dam;
+						processMark = 1;
+						break;
+					case space:
+						if(currentSymbol == mark) markTime = dam - Telaps;
+						spaceTime -= dam;
+						processSpace = 1;
+						break;
+				}
+
+				//Update to new symbol
+				decodeSymbol = currentSymbol;
+
+				//Reset the dam
+				dam = 0;
+			}	
+		}
+		
+		
+		switch(decodeSymbol) {
+			case mark:
+				markTime += Telaps;
+				break;
+			case space:
+				spaceTime += Telaps;
+				break;
+		}
+		
+		if(processMark) {
+			while(markTime > symbolTime - switchTime) {
+ 				character = (character << 1) | 0x0001;
+ 				
+ 				symbolArray[symbolIndex] = 1;
+ 				if(symbolIndex == 32)
+ 					symbolIndex = 0;
+ 				else
+ 					symbolIndex++;
+ 					
+				markTime -= symbolTime;
+				symbolCount++;
+			}
+			
+			markTime = 0;
+			processMark = 0;
+		}
+		
+		if(processSpace) {
+			while(spaceTime > symbolTime - switchTime) {
+ 				character = (character << 1) & 0xFFFE;
+ 				
+ 				symbolArray[symbolIndex] = 0;
+ 				if(symbolIndex == 32)
+ 					symbolIndex = 0;
+ 				else
+ 					symbolIndex++;
+ 					
+				spaceTime -= symbolTime;
+				symbolCount++;
+			}
+			
+			spaceTime = 0;
+			processSpace = 0;
+		}
+		
+		while(symbolCount >= 8) {
+			uint16 overshoot = symbolCount - 8;
+			uint16 adjustedCharacter = character >> overshoot;
+			
+			if(validateRTTY(adjustedCharacter)) {
+				printRTTY(adjustedCharacter);
+				symbolCount -= 8;
+			} else
+				symbolCount--;
+		}	
+		
+		process = 0;
 	}
 }
 
@@ -251,6 +371,8 @@ void initRTTY() {
 			atan_lookup_table[iy + 8][ix + 8] = floatToF16(atan);
 		}
 	}
+	
+	currentSymbol = 0;
 }
 
 uint8 count_leading_unused_bits(uint16 x) {
@@ -262,11 +384,6 @@ uint8 count_leading_unused_bits(uint16 x) {
 		x != x;
 	
 	x <<= 1;
-	
-	/*while((x & 0xF000) == 0 && i < 16) {
-		i += 4;
-		x <<= 1;
-	}*/
 	
 	while((x & 0x8000) == 0 && i < 16) {
 		i++;
@@ -342,15 +459,23 @@ void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) 
 		F16 e = atan_lookup(x, y);
 		ed[ed_idx] = e ;
 
-		if(ed_idx == 63) {
+		if(ed_idx == 255) {
 			ed_idx = 0;
 		} else {
 			ed_idx++;
 		}
 		
+		if(e > 20000)
+			currentSymbol = space;
+		else if(e < 20000)
+			currentSymbol = mark;
+		else
+			currentSymbol = none;
+		
 		F16 cd = F16unsafeMul(4, D1, e);
 	
 		td = F16add(td, F16sub(D0, cd));
+		process = 1;
 	}
 
 	IFS0bits.T3IF = 0; // clear interrupt flag
@@ -360,6 +485,7 @@ void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) 
 void initBaudTimer() {
 	PR1 = 0xFFFF;
 	TMR1 = 0x0000;
+	T1CONbits.TCKPS = 0b01;
 	T1CONbits.TON = 1;
 }
 
@@ -368,7 +494,9 @@ void restartBaudTimer() {
 }
 
 unsigned int getBaudTime() {
-	return TMR1;
+	unsigned int tmp = TMR1;
+	TMR1 = 0x0000;
+	return tmp;
 }
 
 void initSampleTimer() {
@@ -386,24 +514,17 @@ void initSampleTimer() {
 	T3CONbits.TON = 1;
 }
 
-unsigned int validateRTTY(unsigned int character) {
-	unsigned int character_tmp = character & 0xC000;
-	character &= 0xFF00;
-	character ^= 0x0100;
-	character &= 0x0100;
-	character |= character_tmp;
-	if(character == 0xC100) {
+uint16 validateRTTY(uint16 character) {
+	uint16 stopBits = character & 0x0003, startBit = (character & 0x0080) ^ 0x0080;
+	
+	if((startBit | stopBits) == 0x0083)
 		return 1;
-	} else {
+	else
 		return 0;
-	}
 }
 
 void printRTTY(unsigned int character) {
-	unsigned int sent = character;
-	unsigned int sent2 = character;
-	sent >>= 9;
-	sent &= 0x1F;
+	uint16 strippedCharacter = ((character >> 2) & 0x1F), i = 0;
 
 	//buffer[buffer_x] = sent2;
 	//buffer_x++;
@@ -413,10 +534,10 @@ void printRTTY(unsigned int character) {
 	//comDisplay(0, HD_CMD_clear);
 	switch(rtty_mode) {
 		case RTTY_LTRS:
-			character = RTTY_LETTERS_TO_HANTRONIX[sent];
+			character = RTTY_LETTERS_TO_HANTRONIX[strippedCharacter];
 			break;
 		case RTTY_FIGS:
-			character = RTTY_FIGURES_TO_HANTRONIX[sent];
+			character = RTTY_FIGURES_TO_HANTRONIX[strippedCharacter];
 			break;
 	}
 

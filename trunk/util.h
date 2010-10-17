@@ -6,8 +6,8 @@
 #define int16 signed short int
 #define uint16 unsigned short int
 
-#define int32 signed int
-#define uint32 unsigned int
+#define int32 long signed int
+#define uint32 long unsigned int
 
 //#define D4 PORTBbits.RB0
 //#define D5 PORTBbits.RB1
