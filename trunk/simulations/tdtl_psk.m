@@ -5,8 +5,8 @@ F0 = 1000;
 deltap = pi;
 
 %Generate input signal
-dt = 1 / 16000;
-sig_vals = gen_psk(1 / dt, F0, deltap, 1 / 70, '010101');
+dt = 1 / 8000;
+sig_vals = gen_psk(1 / dt, F0, 't');
 sig_time = (0 : length(sig_vals) - 1) * dt;
 runtime = sig_time(length(sig_time));
 
@@ -55,13 +55,13 @@ while t < runtime
     m_plot = [m_plot m];
 end
 
-%subplot(2, 1, 1);
-%hold off;
-%plot(0 : dt : runtime, interp1(sig_time, sig_vals, 0 : dt : runtime));
-%hold on;
-%stem(t_plot, interp1(sig_time, sig_vals, t_plot), '*r');
+subplot(2, 1, 1);
+hold off;
+plot(0 : dt : runtime, interp1(sig_time, sig_vals, 0 : dt : runtime));
+hold on;
+stem(t_plot, interp1(sig_time, sig_vals, t_plot), '*r');
 
-%subplot(2, 1, 2);
+subplot(2, 1, 2);
 %hold off;
 stem(t_plot, abs(e_plot));
 xlabel('Time (s)');
