@@ -26,16 +26,28 @@ void init();
 void initIO();
 void initADC();
 
-//Initialize all the RTTY decode junk
-void initRTTY();
-uint16 symbolIndex;
-uint16 symbolArray[32];
+//Initialize all the demodulation junk
+void initTDTL();
 
-#define none 2
-#define mark 1
-#define space 0
-uint16 currentSymbol;
+//Generic globals
 uint16 process;
+uint16 warmup;
+
+//RTTY global communicator variables
+#define rttyNone 2
+#define rttyMark 1
+#define rttySpace 0
+F16 e;
+
+//PSK31 global communicator variables
+#define IE 4
+#define psk0 0
+#define psk1 1
+#define pskAny 2
+#define pskNone 3
+uint16 edIdx = 0;
+F16 ed[1024];
+F16 ie;
 
 //Baud timer control functions
 void initBaudTimer();
@@ -54,8 +66,6 @@ void delay32_2(unsigned long int delay);
 //signed int spacevar[FFT_BLOCK_LENGTH] __attribute__ ((space (xmemory), aligned (FFT_BLOCK_LENGTH * 2)));
 unsigned short int sample_idx;
 F15 sample[DELAY_LENGTH];// __attribute__ ((space (xmemory)));
-unsigned int ed_idx = 0;
-F16 ed[256];
 
 #define RTTY_NULL 0b10000000
 #define RTTY_LF 0b10000001
@@ -146,8 +156,6 @@ int main(void)
 {
 	unsigned int x = 0;
 	
-	symbolIndex = 0;
-
 	RCONbits.SWDTEN = 0;
 	init();
 	IPC1 = 0xFFFF;
@@ -155,118 +163,168 @@ int main(void)
 	IEC0bits.T3IE = 1;
 	IFS0bits.T3IF = 0;
 
-	//Decode loop
-
-	//Useful Constants
-	const int16 symbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 45.45); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
-	const int16 switchTime = symbolTime / 5;
-	
-	//Decode state variables
-	int32 markTime = 0, spaceTime = 0,
-		decodeSymbol = none, dam = 0;
-		
-	uint16 processMark = 0, processSpace = 0,
-		character = 0, symbolCount = 0;
-		
 	process = 0;
 	
+	//Decode loop
+	uint16 doRTTY = 0, doPSK = 1;
+	
+	//Useful RTTY Constants
+	const int16 rttySymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 45.45); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
+	const int16 rttySwitchTime = rttySymbolTime / 5;
+	
+	//RTTY Decode state variables
+	int32 rttyMarkTime = 0, rttySpaceTime = 0,
+		rttyDecodeSymbol = rttyNone, rttyDam = 0;
+		
+	uint16 rttyCurrentSymbol = rttyNone, rttyProcessMark = 0, rttyProcessSpace = 0,
+		rttyCharacter = 0, rttySymbolCount = 0;
+		
+	//Useful PSK Constants
+	const int16 pskSymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 31.25); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
+	const int16 pskSwitchTime = pskSymbolTime / 5;
+	
+	const F16 pi = floatToF16(3.14159265f), piErr = pi - floatToF16(3.14159265f / 5.0f);
+	//PSK Decode state variables
+	int32 pskDam = 0;
+	
+	uint16 pskWatch = pskNone, pskCharacter = 0, pskSymbolCount = 0;
+	
 	restartBaudTimer();
+	
+	while(warmup < 100) {}
+	
 	while(1) {
 		if(process == 0)
 			continue;
 			
 		uint16 Telaps = getBaudTime();
 		
-		//Watch for a symbol switch
-		//  If an unexpected signal detection change occurs, track it to see if real
-		if(currentSymbol == decodeSymbol) {
-			//If it turns out to be fake, do nothing (because time added to right bin anyway)
-			dam = 0;
-		} else {
-			//If it turns out to be real, evaluate other timer and switch decode symbol 
-			dam += Telaps;
+		if(doRTTY) {
+			if(e > 20000)
+				rttyCurrentSymbol = rttySpace;
+			else if(e < -20000)
+				rttyCurrentSymbol = rttyMark;
+			else
+				rttyCurrentSymbol = rttyNone;
 			
-			if(dam > switchTime) {
-				//If need to switch symbols, evaluate the old decodeSymbol before updating to new
-				switch(decodeSymbol) {
-					case mark:
-						if(currentSymbol == space) spaceTime = dam - Telaps; //The '- Telaps' term avoids double adding
-						markTime -= dam;
-						processMark = 1;
-						break;
-					case space:
-						if(currentSymbol == mark) markTime = dam - Telaps;
-						spaceTime -= dam;
-						processSpace = 1;
-						break;
+			//Watch for a symbol switch
+			//  If an unexpected signal detection change occurs, track it to see if real
+			if(rttyCurrentSymbol == rttyDecodeSymbol) {
+				//If it turns out to be fake, do nothing (because time added to right bin anyway)
+				rttyDam = 0;
+			} else {
+				//If it turns out to be real, evaluate other timer and switch decode symbol 
+				rttyDam += Telaps;
+				
+				if(rttyDam > rttySwitchTime) {
+					//If need to switch symbols, evaluate the old decodeSymbol before updating to new
+					switch(rttyDecodeSymbol) {
+						case rttyMark:
+							if(rttyCurrentSymbol == rttySpace) rttySpaceTime = rttyDam - Telaps; //The '- Telaps' term avoids double adding
+							rttyMarkTime -= rttyDam;
+							rttyProcessMark = 1;
+							break;
+						case rttySpace:
+							if(rttyCurrentSymbol == rttyMark) rttyMarkTime = rttyDam - Telaps;
+							rttySpaceTime -= rttyDam;
+							rttyProcessSpace = 1;
+							break;
+					}
+	
+					//Update to new symbol
+					rttyDecodeSymbol = rttyCurrentSymbol;
+	
+					//Reset the dam
+					rttyDam = 0;
+				}	
+			}
+			
+			
+			switch(rttyDecodeSymbol) {
+				case rttyMark:
+					rttyMarkTime += Telaps;
+					break;
+				case rttySpace:
+					rttySpaceTime += Telaps;
+					break;
+			}
+			
+			if(rttyProcessMark) {
+				while(rttyMarkTime > rttySymbolTime - rttySwitchTime) {
+	 				rttyCharacter = (rttyCharacter << 1) | 0x0001;
+	 					
+					rttyMarkTime -= rttySymbolTime;
+					rttySymbolCount++;
 				}
-
-				//Update to new symbol
-				decodeSymbol = currentSymbol;
-
-				//Reset the dam
-				dam = 0;
+				
+				rttyMarkTime = 0;
+				rttyProcessMark = 0;
+			}
+			
+			if(rttyProcessSpace) {
+				while(rttySpaceTime > rttySymbolTime - rttySwitchTime) {
+	 				rttyCharacter = (rttyCharacter << 1) & 0xFFFE;
+	 					
+					rttySpaceTime -= rttySymbolTime;
+					rttySymbolCount++;
+				}
+				
+				rttySpaceTime = 0;
+				rttyProcessSpace = 0;
+			}
+			
+			while(rttySymbolCount >= 8) {
+				uint16 overshoot = rttySymbolCount - 8;
+				uint16 adjustedCharacter = rttyCharacter >> overshoot;
+				
+				if(validateRTTY(adjustedCharacter)) {
+					printRTTY(adjustedCharacter);
+					rttySymbolCount -= 8;
+				} else
+					rttySymbolCount--;
 			}	
-		}
+			
+			process = 0;
+		} else if(doPSK) {
+			F16 tie = (ie < 0) ? (ie ^ 0xFFFFFFFF) + 1 : ie;
 		
-		
-		switch(decodeSymbol) {
-			case mark:
-				markTime += Telaps;
-				break;
-			case space:
-				spaceTime += Telaps;
-				break;
-		}
-		
-		if(processMark) {
-			while(markTime > symbolTime - switchTime) {
- 				character = (character << 1) | 0x0001;
- 				
- 				symbolArray[symbolIndex] = 1;
- 				if(symbolIndex == 32)
- 					symbolIndex = 0;
- 				else
- 					symbolIndex++;
- 					
-				markTime -= symbolTime;
-				symbolCount++;
+			if(pskWatch == pskNone) {
+				if(tie >= piErr) {
+					pskCharacter = (pskCharacter << 1) | 0x1;
+					pskDam = 0;
+					pskWatch = pskAny;
+					pskSymbolCount++;
+				}	
+			} else {
+				pskDam += Telaps;
+
+				if(pskDam >= pskSymbolTime - pskSwitchTime && tie >= piErr) {
+					pskCharacter = (pskCharacter << 1) | 0x1;
+					//pskDam -= pskSymbolTime;
+					pskDam = 0;
+					pskWatch = pskAny;
+					pskSymbolCount++;
+				}
+					
+				if(pskDam >= pskSymbolTime + pskSwitchTime) {
+					if(pskWatch == pskAny | pskWatch == psk0) {
+						pskCharacter = (pskCharacter << 1) & 0xFFFE;
+						//pskDam -= pskSymbolTime;
+						pskDam = 0;
+						pskWatch = psk1;
+						pskSymbolCount++;
+					} else {
+						pskCharacter >>= 1;
+						pskDam = 0;
+						pskCharacter = 0;
+						pskWatch = pskNone;
+						pskSymbolCount = 0;
+					}
+				}
 			}
 			
-			markTime = 0;
-			processMark = 0;
+			process = 0;
 		}
-		
-		if(processSpace) {
-			while(spaceTime > symbolTime - switchTime) {
- 				character = (character << 1) & 0xFFFE;
- 				
- 				symbolArray[symbolIndex] = 0;
- 				if(symbolIndex == 32)
- 					symbolIndex = 0;
- 				else
- 					symbolIndex++;
- 					
-				spaceTime -= symbolTime;
-				symbolCount++;
-			}
-			
-			spaceTime = 0;
-			processSpace = 0;
-		}
-		
-		while(symbolCount >= 8) {
-			uint16 overshoot = symbolCount - 8;
-			uint16 adjustedCharacter = character >> overshoot;
-			
-			if(validateRTTY(adjustedCharacter)) {
-				printRTTY(adjustedCharacter);
-				symbolCount -= 8;
-			} else
-				symbolCount--;
-		}	
-		
-		process = 0;
 	}
 }
 
@@ -279,7 +337,7 @@ void init() {
 	
 	sample_idx = 0;
 	
-	initRTTY();
+	initTDTL();
 	
 	initSampleTimer(); // We start this timer last so that processing will only begin after all initialization is finished
 }
@@ -317,7 +375,7 @@ F16 td,
 	negOne,
 	atan_lookup_table[16][16];
 
-void initRTTY() {
+void initTDTL() {
 	const float pi = 3.14159265f;
 
 	float Fs, Ts,
@@ -371,8 +429,6 @@ void initRTTY() {
 			atan_lookup_table[iy + 8][ix + 8] = floatToF16(atan);
 		}
 	}
-	
-	currentSymbol = 0;
 }
 
 uint8 count_leading_unused_bits(uint16 x) {
@@ -429,6 +485,8 @@ void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) 
 	sample[sample_idx] = input;
 
 	if(td < 0) {
+		warmup++;
+		
 		F16 kfx = F16sub(td, kftau);
 		F16 kfy = td;
 		
@@ -456,21 +514,17 @@ void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) 
 						)
 					);
 	
-		F16 e = atan_lookup(x, y);
-		ed[ed_idx] = e ;
-
-		if(ed_idx == 255) {
-			ed_idx = 0;
-		} else {
-			ed_idx++;
-		}
+		e = atan_lookup(x, y);
+		ed[edIdx] = e;
 		
-		if(e > 20000)
-			currentSymbol = space;
-		else if(e < 20000)
-			currentSymbol = mark;
-		else
-			currentSymbol = none;
+		ie += e;
+		ie -= ed[(edIdx - IE) & (1024 - 1)];
+
+		if(edIdx == 1023) {
+			edIdx = 0;
+		} else {
+			edIdx++;
+		}
 		
 		F16 cd = F16unsafeMul(4, D1, e);
 	

@@ -136,9 +136,9 @@ function output = gen_psk(Fs, F0, message)
         character = message(i);
         
         if(isKey(P, character))
-            bitmessage = [bitmessage P(character)];
+            bitmessage = [bitmessage P(character) '00'];
         else
-            bitmessage = [bitmessage P(' ')];
+            bitmessage = [bitmessage '00'];
         end
     end
     
