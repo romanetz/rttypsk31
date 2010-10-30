@@ -31,13 +31,12 @@ void initTDTL();
 
 //Generic globals
 uint16 process;
-uint16 warmup;
+F16 td, oldTd;
 
 //RTTY global communicator variables
 #define rttyNone 2
 #define rttyMark 1
 #define rttySpace 0
-F16 e;
 
 //PSK31 global communicator variables
 #define IE 4
@@ -47,7 +46,8 @@ F16 e;
 #define pskNone 3
 uint16 edIdx = 0;
 F16 ed[1024];
-F16 ie;
+
+F16 atan_lookup(F15 yi, F15 xi);
 
 //Baud timer control functions
 void initBaudTimer();
@@ -157,16 +157,32 @@ int main(void)
 	unsigned int x = 0;
 	
 	RCONbits.SWDTEN = 0;
-	init();
+	
+	//Demodulation constants
+	F16 D1, kftau,
+		e = 0, ie = 0;
+	
+	initIO();
+	initADC();
+	initBaudTimer();
+	//initDisplay();
+	
+	sample_idx = 0;
+	
+	initTDTL(&D1, &kftau);
+	
+	initSampleTimer(); // We start this timer last so that processing will only begin after all initialization is finished
+
 	IPC1 = 0xFFFF;
 
 	IEC0bits.T3IE = 1;
 	IFS0bits.T3IF = 0;
 
+	td = oldTd = 0;
 	process = 0;
 	
 	//Decode loop
-	uint16 doRTTY = 0, doPSK = 1;
+	uint16 doRTTY = 1, doPSK = 0;
 	
 	//Useful RTTY Constants
 	const int16 rttySymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 45.45); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
@@ -191,11 +207,55 @@ int main(void)
 	
 	restartBaudTimer();
 	
-	while(warmup < 100) {}
-	
 	while(1) {
 		if(process == 0)
 			continue;
+		
+		F16 kfx = F16sub(oldTd, kftau);
+		F16 kfy = oldTd;
+		
+		uint16 kx_idx = sample_idx + F16Toint(kfx);
+		F15 kx_alpha = F16ToF15(kfx);
+	
+		uint16 ky_idx = sample_idx;
+		F15 ky_alpha = F16ToF15(kfy);
+
+		F15 x = F15add(
+					F15mul(
+						F15neg(kx_alpha), sample[(kx_idx - 1) & (DELAY_LENGTH - 1)]
+						),
+					F15mul(
+						F15inc(kx_alpha), sample[kx_idx]
+						)
+					);
+	
+		F15 y = F15add(
+					F15mul(
+						F15neg(ky_alpha), sample[(ky_idx - 1) & (DELAY_LENGTH - 1)]
+						),
+					F15mul(
+						F15inc(ky_alpha), sample[ky_idx & (DELAY_LENGTH - 1)]
+						)
+					);
+	
+		e = atan_lookup(x, y);
+		ed[edIdx] = e;
+		
+		ie += e;
+		ie -= ed[(edIdx - IE) & (1024 - 1)];
+
+		if(edIdx == 1023) {
+			edIdx = 0;
+		} else {
+			edIdx++;
+		}
+		
+		F16 cd = F16unsafeMul(4, D1, e);
+	
+		//Disable global interrupts on this update
+		IEC0bits.T3IE = 0;
+		td = F16add(td, F16neg(cd));
+		IEC0bits.T3IE = 1;
 			
 		uint16 Telaps = getBaudTime();
 		
@@ -282,7 +342,7 @@ int main(void)
 					rttySymbolCount -= 8;
 				} else
 					rttySymbolCount--;
-			}	
+			}
 			
 			process = 0;
 		} else if(doPSK) {
@@ -298,7 +358,7 @@ int main(void)
 			} else {
 				pskDam += Telaps;
 
-				if(pskDam >= pskSymbolTime - pskSwitchTime && tie >= piErr) {
+				if(pskDam >= (pskSymbolTime - pskSwitchTime) && tie >= piErr) {
 					pskCharacter = (pskCharacter << 1) | 0x1;
 					//pskDam -= pskSymbolTime;
 					pskDam = 0;
@@ -306,7 +366,7 @@ int main(void)
 					pskSymbolCount++;
 				}
 					
-				if(pskDam >= pskSymbolTime + pskSwitchTime) {
+				if(pskDam >= (pskSymbolTime + pskSwitchTime)) {
 					if(pskWatch == pskAny | pskWatch == psk0) {
 						pskCharacter = (pskCharacter << 1) & 0xFFFE;
 						//pskDam -= pskSymbolTime;
@@ -326,20 +386,6 @@ int main(void)
 			process = 0;
 		}
 	}
-}
-
-//Initialize everything
-void init() {
-	initIO();
-	initADC();
-	initBaudTimer();
-	//initDisplay();
-	
-	sample_idx = 0;
-	
-	initTDTL();
-	
-	initSampleTimer(); // We start this timer last so that processing will only begin after all initialization is finished
 }
 
 void initIO() {
@@ -370,12 +416,12 @@ void initADC() {
 	AD1CON1bits.ADON = 1; // Enable ADC
 }
 
-F16 td,
-	D0, D1, kftau,
-	negOne,
-	atan_lookup_table[16][16];
+F16 D0,
+	F16pi1By2, F16pi,
+	atanLookupTable[64];
 
-void initTDTL() {
+void initTDTL(F16 *D1, F16 *kftau) {
+	
 	const float pi = 3.14159265f;
 
 	float Fs, Ts,
@@ -385,7 +431,10 @@ void initTDTL() {
 		F0, W0, T0,
 		K1, G1;
 
-	psi = PI / 3.0f;
+	psi = pi / 3.0f;
+	
+	F16pi1By2 = floatToF16(pi / 2.0f);
+	F16pi = floatToF16(pi);
 
 	Fs = (float)SAMPLE_RATE;
 	Ts = (1.0f / Fs);
@@ -401,34 +450,13 @@ void initTDTL() {
 	G1 = K1 / W0;
 
 	D0 = floatToF16(Fs * T0);
-	D1 = floatToF15(Fs * G1);
-	kftau = floatToF16(Fs * tau);
-	td = kftau;
+	*D1 = floatToF15(Fs * G1);
+	*kftau = floatToF16(Fs * tau);
+	td = *kftau;
 
-	int16 ix, iy;
-	for(ix = -8; ix < 8; ix++) {
-		for(iy = -8; iy < 8; iy++) {
-			float x = (float)ix, y = (float)iy,	atan = 0.0f;
-
-			if(y == 0) {
-				if(x >= 0) {
-					atan = 0.0f;
-				} else {
-					atan = -1.0f * pi;
-				}	
-			} else if(x == 0) {
-				if(y > 0) {
-					atan = pi / 2.0f;
-				} else {
-					atan = pi / -2.0f;
-				}	
-			} else {	
-				atan = atan2f(y, x);
-			}	
-
-			atan_lookup_table[iy + 8][ix + 8] = floatToF16(atan);
-		}
-	}
+	int i;
+	for(i = 0; i < 64; i++)
+		atanLookupTable[i] = floatToF16(atanf(((float)i) / 4.0f));
 }
 
 uint8 count_leading_unused_bits(uint16 x) {
@@ -449,88 +477,109 @@ uint8 count_leading_unused_bits(uint16 x) {
 	return i;
 }
 
+uint8 count_trailing_unused_bits(uint16 x) {
+	uint8 i = 0, j = 0;
+	
+	uint8 sign = (x >> 15) & 0x1;
+	
+	if(sign == 0x1)
+		x != x;
+	
+	while((x & 0x0001) == 0 && i < 16) {
+		i++;
+		x >>= 1;
+	}
+	
+	return i;
+}
+
 uint16 remove_leading_bits(uint8 bitcount, uint16 x) {
 	return (x & 0x8000) | ((x << bitcount) & 0x7FFF);
 }
 
-F16 atan_lookup(F15 y, F15 x) {
-	F15 _x = x;
-	F15 _y = y;
+F16 atan_lookup(F15 yi, F15 xi) {
+	F15 _x, _y;
 	
-	uint8 xs = count_leading_unused_bits(x);
-	uint8 ys = count_leading_unused_bits(y);
+	uint8 xsign, ysign;
 	
-	uint8 s = (xs < ys) ? xs : ys;
-
-	x = remove_leading_bits(s, x);	
-	y = remove_leading_bits(s, y);	
-
-	x += 0x8000;
-	y += 0x8000;
+	//Handle the zeroes here
+	if(yi == 0)
+		if(xi >= 0)
+			return F16pi;
+		else
+			return F16neg(F16pi);
 	
-	x = (x >> 12) & 0xF;
-	y = (y >> 12) & 0xF;
-
-	F16 retval = atan_lookup_table[y][x];
-	return retval;
+	if(xi == 0)
+		if(yi > 0)
+			return F16pi1By2;
+		else
+			return F16neg(F16pi1By2);
+	
+	_x = (xi < 0) ? F15neg(xi) : xi;
+	_y = (yi < 0) ? F15neg(yi) : yi;
+	
+	F16 val = 0, valp = 0;
+	
+	uint16 i = _y / _x;
+	uint16 r = _y % _x;
+	
+	uint8 us = count_leading_unused_bits(r);
+	uint8 ls = count_leading_unused_bits(_x);
+	
+	_x >>= (15 - ls - 7);
+	
+	uint16 c = 0xFFFF;
+	
+	if(_x != 0)
+		c = (r << us) / _x;
+		
+	c = (c << (15 - (us + (15 - ls - 7)))) - 1;
+	
+	F15 alpha = c, alphap;
+	
+	i = (i << 2) | ((alpha & 0x6000) >> 13);
+	alpha = (alpha << 2) & 0x7FFF;
+	
+	alphap = F15neg(F15inc(alpha));
+	
+	if(i >= 64) {
+		val = F16pi1By2;
+	} else {
+		val = atanLookupTable[i];
+		
+		if(i + 1 < 64)
+			valp = atanLookupTable[i + 1];
+		else
+			valp = F16pi1By2;
+			
+		val = F16add(F16unsafeMul(2, val, F15ToF16(alphap)), F16unsafeMul(2, valp, F15ToF16(alpha)));
+	}
+	
+	if(xi > 0 && yi > 0)
+		return val;
+	else if(xi > 0 && yi < 0)
+		return F16neg(val);
+	else if(xi < 0 && yi > 0)
+		return F16add(val, F16pi1By2);
+	else if(xi < 0 && yi < 0)
+		return F16neg(F16add(val, F16pi1By2));
 }
 
 void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) {
 	td = F16dec(td);
 		
 	F15 input = (ADC1BUF0 - 0x0800) << 4;
+	
 	AD1CON1bits.SAMP = 1;
 
 	sample_idx = (sample_idx + 1) & (DELAY_LENGTH - 1);
 	sample[sample_idx] = input;
 
 	if(td < 0) {
-		warmup++;
-		
-		F16 kfx = F16sub(td, kftau);
-		F16 kfy = td;
-		
-		uint16 kx_idx = sample_idx + F16Toint(kfx);
-		F15 kx_alpha = F16ToF15(kfx);
-	
-		uint16 ky_idx = sample_idx;
-		F15 ky_alpha = F16ToF15(kfy);
-
-		F15 x = F15add(
-					F15mul(
-						F15neg(kx_alpha), sample[(kx_idx - 1) & (DELAY_LENGTH - 1)]
-						),
-					F15mul(
-						F15inc(kx_alpha), sample[kx_idx]
-						)
-					);
-	
-		F15 y = F15add(
-					F15mul(
-						F15neg(ky_alpha), sample[(ky_idx - 1) & (DELAY_LENGTH - 1)]
-						),
-					F15mul(
-						F15inc(ky_alpha), sample[ky_idx & (DELAY_LENGTH - 1)]
-						)
-					);
-	
-		e = atan_lookup(x, y);
-		ed[edIdx] = e;
-		
-		ie += e;
-		ie -= ed[(edIdx - IE) & (1024 - 1)];
-
-		if(edIdx == 1023) {
-			edIdx = 0;
-		} else {
-			edIdx++;
-		}
-		
-		F16 cd = F16unsafeMul(4, D1, e);
-	
-		td = F16add(td, F16sub(D0, cd));
+		oldTd = td;
+		td = F16add(td, D0);
 		process = 1;
-	}
+	}	
 
 	IFS0bits.T3IF = 0; // clear interrupt flag
 }
