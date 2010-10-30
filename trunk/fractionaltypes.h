@@ -20,7 +20,7 @@
 #define F16neg(x) (((x) ^ 0xFFFFFFFF) + 1)
 #define F16add(x, y) ((x) + (y))
 #define F16sub(x, y) ((x) - (y))
-#define F16unsafeMul(s, x, y) (F16)((((x) >> s) * ((y) >> s)) >> (16 - 2 * s));
+#define F16unsafeMul(s, x, y) (F16)((((x) >> s) * ((y) >> s)) >> (16 - 2 * s))
 #define F16mul(x, y) ((F16)(((signed long long int)(x) * (signed long long int)(y)) >> 16))
 
 #define floatToF15(x) ((F15)((x) * 32768.0f))
