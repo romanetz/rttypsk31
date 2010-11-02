@@ -47,25 +47,25 @@ void setDispPort(unsigned int rwrs, unsigned int x) {
 void initDisplay() {
 	setDispPortSend();
 	//Wait at least 15ms
-	__delay32(17500000);
+	__delay32(30 * Fy / 1000);
 
 	setDispPort(0, 0b0011);
 	E = 1; delay(1000); E = 0;
 
 	//Wait at least 4.1ms
-	__delay32(1700000);
+	__delay32(10 * Fy / 1000);
 
 	setDispPort(0, 0b0011);
 	E = 1; delay(1000); E = 0;
 
 	//Wait at least 100microseconds
-	__delay32(300000);
+	__delay32(Fy / 1000);
 
 	setDispPort(0, 0b0011);
 	E = 1; delay(1000); E = 0;
 
 	//Wait about 5ms
-	__delay32(1500000);
+	__delay32(10 * Fy / 1000);
 	
 	setDispPort(0, 0b0010);
 	E = 1; delay(1000); E = 0;
@@ -113,17 +113,19 @@ void comDisplay(unsigned short int rwrs, unsigned short int val) {
 }
 
 printDisplay(unsigned int character) {
-	if(display_offset <= 7) {
+	if(display_offset <= 7)
 		comDisplay(1, character);
-	} else {
-		if(display_offset == 8) {
+	else {
+		if(display_offset == 8)
 			comDisplay(0, HD_CMD_DDaddress | 0x40);
-		}
+		
 		if(display_offset > 15) {
 			comDisplay(0, HD_CMD_return);
 			display_offset = 0;
 		}
+
 		comDisplay(1, character);
 	}
+
 	display_offset++;
 }

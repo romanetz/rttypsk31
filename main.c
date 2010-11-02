@@ -6,6 +6,7 @@
 #include "math.h"
 
 #include "HD44780.h"
+#include "util.h"
 #include "fractionaltypes.h"
 
 #define DELAY_LENGTH 64
@@ -15,8 +16,6 @@
 
 //_FOSCSEL(FNOSC_FRC);
 
-#define Fosc 7370000
-#define Fy (Fosc / 2)
 #define SAMPLE_RATE 8000
 
 
@@ -165,7 +164,7 @@ int main(void)
 	initIO();
 	initADC();
 	initBaudTimer();
-	//initDisplay();
+	initDisplay();
 	
 	sample_idx = 0;
 	
@@ -186,7 +185,7 @@ int main(void)
 	
 	//Useful RTTY Constants
 	const int16 rttySymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 45.45); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
-	const int16 rttySwitchTime = rttySymbolTime / 5;
+	const int16 rttySwitchTime = rttySymbolTime / 4;
 	
 	//RTTY Decode state variables
 	int32 rttyMarkTime = 0, rttySpaceTime = 0,
@@ -261,9 +260,9 @@ int main(void)
 		
 		if(doRTTY) {
 			if(e > 20000)
-				rttyCurrentSymbol = rttySpace;
-			else if(e < -20000)
 				rttyCurrentSymbol = rttyMark;
+			else if(e < -20000)
+				rttyCurrentSymbol = rttySpace;
 			else
 				rttyCurrentSymbol = rttyNone;
 			
@@ -644,7 +643,7 @@ void printRTTY(unsigned int character) {
 			break;
 	}
 
-	/*switch(character) {
+	switch(character) {
 		case (RTTY_NULL):
 			printDisplay(HD_space);
 			break;
@@ -654,11 +653,6 @@ void printRTTY(unsigned int character) {
 			printDisplay(HD_space);
 			break;
 		case (RTTY_CR):
-			if(display_offset < 8) {
-				display_offset = 8;
-			} else {
-				display_offset = 16;
-			}
 			break;
 		case (RTTY_FIGS):
 			rtty_mode = RTTY_FIGS;
@@ -679,7 +673,7 @@ void printRTTY(unsigned int character) {
 		default:
 			printDisplay(character);
 			break;
-	}*/
+	}
 	//chars_sent++;
 }
 
