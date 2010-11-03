@@ -58,7 +58,10 @@ void initSampleTimer();
 
 //RTTY decode utility functions
 uint16 validateRTTY(uint16 character);
-void printRTTY(unsigned int character);
+void printRTTY(uint16 character);
+
+//PSK decode utility functions
+void printPSK(uint16 character);
 
 void delay32_2(unsigned long int delay);
 
@@ -80,6 +83,25 @@ unsigned int rtty_mode = RTTY_LTRS;
 //RTTY notes:
 //RTTYrite has a " in stead of a +, we use that.
 //Also, it sends BEL in place of '.
+
+uint16 bitrev(uint16 in, uint8 bits) {
+	uint16 out, marker;
+	uint8 i;
+	
+	if(bits == 0)
+		return 0;
+	
+	out = 0;
+	marker = 0x1 << (bits - 1);
+	
+	for(i = 0; i < bits; i++) {
+		out >>= 1;
+		out = out | ((in & marker) << i);
+		marker >>= 1;
+	}
+	
+	return out;
+}	
 
 const unsigned int RTTY_LETTERS_TO_HANTRONIX[32] = {
 RTTY_NULL,//0x00
@@ -151,6 +173,268 @@ HD_semicolon,//0x1E
 RTTY_LTRS//0x1F
 };
 
+uint16 PSK_TO_PSK_IDX[128] = {
+0b1,
+0b11,
+0b101,
+0b111,
+0b1011,
+0b1101,
+0b1111,
+0b10101,
+0b10111,
+0b11011,
+0b11101,
+0b11111,
+0b101011,
+0b101101,
+0b101111,
+0b110101,
+0b110111,
+0b111011,
+0b111101,
+0b111111,
+0b1010101,
+0b1010111,
+0b1011011,
+0b1011101,
+0b1011111,
+0b1101011,
+0b1101101,
+0b1101111,
+0b1110101,
+0b1110111,
+0b1111011,
+0b1111101,
+0b1111111,
+0b10101011,
+0b10101101,
+0b10101111,
+0b10110101,
+0b10110111,
+0b10111011,
+0b10111101,
+0b10111111,
+0b11010101,
+0b11010111,
+0b11011011,
+0b11011101,
+0b11011111,
+0b11101011,
+0b11101101,
+0b11101111,
+0b11110101,
+0b11110111,
+0b11111011,
+0b11111101,
+0b11111111,
+0b101010101,
+0b101010111,
+0b101011011,
+0b101011101,
+0b101011111,
+0b101101011,
+0b101101101,
+0b101101111,
+0b101110101,
+0b101110111,
+0b101111011,
+0b101111101,
+0b101111111,
+0b110101011,
+0b110101101,
+0b110101111,
+0b110110101,
+0b110110111,
+0b110111011,
+0b110111101,
+0b110111111,
+0b111010101,
+0b111010111,
+0b111011011,
+0b111011101,
+0b111011111,
+0b111101011,
+0b111101101,
+0b111101111,
+0b111110101,
+0b111110111,
+0b111111011,
+0b111111101,
+0b111111111,
+0b1010101011,
+0b1010101101,
+0b1010101111,
+0b1010110101,
+0b1010110111,
+0b1010111011,
+0b1010111101,
+0b1010111111,
+0b1011010101,
+0b1011010111,
+0b1011011011,
+0b1011011101,
+0b1011011111,
+0b1011101011,
+0b1011101101,
+0b1011101111,
+0b1011110101,
+0b1011110111,
+0b1011111011,
+0b1011111101,
+0b1011111111,
+0b1101010101,
+0b1101010111,
+0b1101011011,
+0b1101011101,
+0b1101011111,
+0b1101101011,
+0b1101101101,
+0b1101101111,
+0b1101110101,
+0b1101110111,
+0b1101111011,
+0b1101111101,
+0b1101111111,
+0b1110101011,
+0b1110101101,
+0b1110101111,
+0b1110110101,
+0b1110110111,
+0b1110111011
+};
+
+uint16 PSK_IDX_TO_HANTRONIX[128] = {
+HD_space,
+HD_low_e,
+HD_low_t,
+HD_low_o,
+HD_low_a,
+HD_low_i,
+HD_low_n,
+HD_low_r,
+HD_low_s,
+HD_low_l,
+'\n',
+'\n',
+HD_low_h,
+HD_low_d,
+HD_low_c,
+HD_subtract,
+HD_low_u,
+HD_low_m,
+HD_low_f,
+HD_low_p,
+HD_equals,
+HD_period,
+HD_low_g,
+HD_low_y,
+HD_low_b,
+HD_low_w,
+HD_cap_T,
+HD_cap_S,
+HD_comma,
+HD_cap_E,
+HD_low_v,
+HD_cap_A,
+HD_cap_I,
+HD_cap_O,
+HD_cap_C,
+HD_cap_R,
+HD_cap_D,
+HD_zero,
+HD_cap_M,
+HD_one,
+HD_low_k,
+HD_cap_P,
+HD_cap_L,
+HD_cap_F,
+HD_cap_N,
+HD_low_x,
+HD_cap_B,
+HD_two,
+HD_space, //Tab
+HD_colon,
+HD_rightparenthesis,
+HD_leftparenthesis,
+HD_cap_G,
+HD_three,
+HD_cap_H,
+HD_cap_U,
+HD_five,
+HD_cap_W,
+HD_doublequote,
+HD_six,
+HD_underscore,
+HD_multiply,
+HD_cap_X,
+HD_four,
+HD_cap_Y,
+HD_cap_K,
+HD_apostrophe,
+HD_eight,
+HD_seven,
+HD_divide, ///
+HD_cap_V,
+HD_nine,
+HD_or,
+HD_semicolon,
+HD_low_q,
+HD_low_z,
+HD_greaterthan,
+HD_dollar,
+HD_cap_Q,
+HD_add,
+HD_low_j,
+HD_lessthan,
+HD_divide, //\
+HD_pound,
+HD_leftbracket,
+HD_rightbracket,
+HD_cap_J,
+HD_exclamation,
+HD_space,
+HD_cap_Z,
+HD_question,
+HD_rightcurlybracket,
+HD_leftcurlybracket,
+HD_and,
+HD_at,
+HD_power,
+HD_percent,
+HD_accent, //~
+HD_space,
+HD_space,
+HD_accent,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space,
+HD_space
+};
+
 int main(void)
 {
 	unsigned int x = 0;
@@ -181,11 +465,11 @@ int main(void)
 	process = 0;
 	
 	//Decode loop
-	uint16 doRTTY = 1, doPSK = 0;
+	uint16 doRTTY = 0, doPSK = 1;
 	
 	//Useful RTTY Constants
-	const int16 rttySymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 45.45); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
-	const int16 rttySwitchTime = rttySymbolTime / 4;
+	const int16 rttySymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 44.0); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
+	const int16 rttySwitchTime = rttySymbolTime / 2;
 	
 	//RTTY Decode state variables
 	int32 rttyMarkTime = 0, rttySpaceTime = 0,
@@ -195,14 +479,14 @@ int main(void)
 		rttyCharacter = 0, rttySymbolCount = 0;
 		
 	//Useful PSK Constants
-	const int16 pskSymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 31.25); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
-	const int16 pskSwitchTime = pskSymbolTime / 5;
+	const int16 pskSymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 31.75); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
+	const int16 pskSwitchTime = pskSymbolTime / 6;
 	
 	const F16 pi = floatToF16(3.14159265f), piErr = pi - floatToF16(3.14159265f / 5.0f);
 	//PSK Decode state variables
 	int32 pskDam = 0;
 	
-	uint16 pskWatch = pskNone, pskCharacter = 0, pskSymbolCount = 0;
+	uint16 pskWatch = psk1, pskSpace = 0, pskCharacter = 0, pskSymbolCount = 0;
 	
 	restartBaudTimer();
 	
@@ -259,9 +543,9 @@ int main(void)
 		uint16 Telaps = getBaudTime();
 		
 		if(doRTTY) {
-			if(e > 20000)
+			if(e < -20000)
 				rttyCurrentSymbol = rttyMark;
-			else if(e < -20000)
+			else if(e > 20000)
 				rttyCurrentSymbol = rttySpace;
 			else
 				rttyCurrentSymbol = rttyNone;
@@ -337,8 +621,11 @@ int main(void)
 				uint16 adjustedCharacter = rttyCharacter >> overshoot;
 				
 				if(validateRTTY(adjustedCharacter)) {
-					printRTTY(adjustedCharacter);
+					adjustedCharacter = bitrev((adjustedCharacter >> 2) & 0x1F, 5);
+					
 					rttySymbolCount -= 8;
+					
+					printRTTY(adjustedCharacter);
 				} else
 					rttySymbolCount--;
 			}
@@ -347,39 +634,48 @@ int main(void)
 		} else if(doPSK) {
 			F16 tie = (ie < 0) ? (ie ^ 0xFFFFFFFF) + 1 : ie;
 		
-			if(pskWatch == pskNone) {
-				if(tie >= piErr) {
-					pskCharacter = (pskCharacter << 1) | 0x1;
-					pskDam = 0;
-					pskWatch = pskAny;
-					pskSymbolCount++;
-				}	
-			} else {
-				pskDam += Telaps;
+			pskDam += Telaps;
 
-				if(pskDam >= (pskSymbolTime - pskSwitchTime) && tie >= piErr) {
-					pskCharacter = (pskCharacter << 1) | 0x1;
+			if(pskDam >= (pskSymbolTime - pskSwitchTime) && tie >= piErr) {
+				if(pskWatch == pskAny | pskWatch == psk0) {
+					pskCharacter = (pskCharacter << 1) & 0xFFFE;
+					
 					//pskDam -= pskSymbolTime;
 					pskDam = 0;
-					pskWatch = pskAny;
+						
+					pskWatch = psk1;
 					pskSymbolCount++;
-				}
+				} else {
+					pskCharacter >>= 1;
 					
-				if(pskDam >= (pskSymbolTime + pskSwitchTime)) {
-					if(pskWatch == pskAny | pskWatch == psk0) {
-						pskCharacter = (pskCharacter << 1) & 0xFFFE;
-						//pskDam -= pskSymbolTime;
-						pskDam = 0;
-						pskWatch = psk1;
-						pskSymbolCount++;
-					} else {
-						pskCharacter >>= 1;
-						pskDam = 0;
-						pskCharacter = 0;
-						pskWatch = pskNone;
-						pskSymbolCount = 0;
-					}
-				}
+					if(pskSymbolCount > 0) {
+						if(pskCharacter == 0b1010101)
+							pskSpace = 1;
+						printPSK(pskCharacter);
+						if(pskCharacter != 0b1)
+							pskSpace = 0;
+					} else if(!pskSpace) {
+						printPSK(0b1);
+						pskSpace = 1;
+					}	
+					
+					pskDam = 0;
+					pskCharacter = 0;
+					pskWatch = psk1;
+					pskSymbolCount = 0;
+				}	
+			}
+
+			if(pskDam >= (pskSymbolTime + pskSwitchTime)) {
+				pskCharacter = (pskCharacter << 1) | 0x1;
+
+				//if(pskSymbolCount > 0)
+				//	pskDam -= pskSymbolTime;
+				//else
+					pskDam = 0;
+
+				pskWatch = pskAny;
+				pskSymbolCount++;
 			}
 			
 			process = 0;
@@ -625,21 +921,13 @@ uint16 validateRTTY(uint16 character) {
 		return 0;
 }
 
-void printRTTY(unsigned int character) {
-	uint16 strippedCharacter = ((character >> 2) & 0x1F), i = 0;
-
-	//buffer[buffer_x] = sent2;
-	//buffer_x++;
-	//if(buffer_x > 31) {
-	//	character = RTTY_FIGURES_TO_HANTRONIX[sent];
-	//}
-	//comDisplay(0, HD_CMD_clear);
+void printRTTY(uint16 character) {
 	switch(rtty_mode) {
 		case RTTY_LTRS:
-			character = RTTY_LETTERS_TO_HANTRONIX[strippedCharacter];
+			character = RTTY_LETTERS_TO_HANTRONIX[character];
 			break;
 		case RTTY_FIGS:
-			character = RTTY_FIGURES_TO_HANTRONIX[strippedCharacter];
+			character = RTTY_FIGURES_TO_HANTRONIX[character];
 			break;
 	}
 
@@ -675,6 +963,43 @@ void printRTTY(unsigned int character) {
 			break;
 	}
 	//chars_sent++;
+}
+
+void printPSK(uint16 character) { 
+	int16 idxOffset = 128 / 2;
+	uint16 idx = idxOffset;
+	
+	//character = bitrev(character, 16 - count_leading_unused_bits(character));
+	
+	while(idxOffset > 0) {
+		
+		if(idx > 128)
+			return;
+			
+		uint16 val = PSK_TO_PSK_IDX[idx];
+		
+		idxOffset >>= 1;
+		
+		if(val > character)
+			idx -= idxOffset;
+		else if(val < character)
+			idx += idxOffset;
+		else
+			break;
+			
+		if(idxOffset == 0) {
+			val = PSK_TO_PSK_IDX[idx];
+
+			if(val > character && idx == 1) {
+				idx = 0;
+				break;
+			}
+
+			return;
+		}	
+	}
+	
+	printDisplay(PSK_IDX_TO_HANTRONIX[idx]);
 }
 
 
