@@ -448,7 +448,7 @@ int main(void)
 	initIO();
 	initADC();
 	initBaudTimer();
-	initDisplay();
+	//initDisplay();
 	
 	sample_idx = 0;
 	
@@ -468,8 +468,8 @@ int main(void)
 	uint16 doRTTY = 0, doPSK = 1;
 	
 	//Useful RTTY Constants
-	const int16 rttySymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 44.0); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
-	const int16 rttySwitchTime = rttySymbolTime / 2;
+	const int16 rttySymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 45.45); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
+	const int16 rttySwitchTime = rttySymbolTime / 5;
 	
 	//RTTY Decode state variables
 	int32 rttyMarkTime = 0, rttySpaceTime = 0,
@@ -479,7 +479,7 @@ int main(void)
 		rttyCharacter = 0, rttySymbolCount = 0;
 		
 	//Useful PSK Constants
-	const int16 pskSymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 31.75); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
+	const int16 pskSymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 31.25); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
 	const int16 pskSwitchTime = pskSymbolTime / 6;
 	
 	const F16 pi = floatToF16(3.14159265f), piErr = pi - floatToF16(3.14159265f / 5.0f);
@@ -625,7 +625,7 @@ int main(void)
 					
 					rttySymbolCount -= 8;
 					
-					printRTTY(adjustedCharacter);
+					//printRTTY(adjustedCharacter);
 				} else
 					rttySymbolCount--;
 			}
@@ -649,9 +649,7 @@ int main(void)
 					pskCharacter >>= 1;
 					
 					if(pskSymbolCount > 0) {
-						if(pskCharacter == 0b1010101)
-							pskSpace = 1;
-						printPSK(pskCharacter);
+						//printPSK(pskCharacter);
 						if(pskCharacter != 0b1)
 							pskSpace = 0;
 					} else if(!pskSpace) {
