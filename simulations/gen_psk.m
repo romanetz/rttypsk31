@@ -1,5 +1,5 @@
 function output = gen_psk(Fs, F0, message)
-    P = containers.Map('KeyType', 'char', 'ValueType', 'any');
+    P = containers.Map('KeyType', 'char');
     
     P(char(0)) = '1010101011';
     P(char(1)) = '1011011011';
@@ -150,9 +150,9 @@ function output = gen_psk(Fs, F0, message)
     tm = 0;
     for i = 1:length(bitmessage)
         if(bitmessage(i) == '1')
-            m = 1.0;
-        else
             m = 0.0;
+        else
+            m = 1.0;
         end
         
         tb = t;

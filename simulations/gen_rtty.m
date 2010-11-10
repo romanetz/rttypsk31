@@ -1,6 +1,6 @@
-function output = gen_rtty(Fs, Fspace, Fmark, Tsymbol, message)
-    RL = containers.Map('KeyType', 'char', 'ValueType', 'any');
-    RF = containers.Map('KeyType', 'char', 'ValueType', 'any');
+function output = gen_rtty(Fs, Fspace, Fmark, Tsymbol, stopBits, message)
+    RL = containers.Map('KeyType', 'char');
+    RF = containers.Map('KeyType', 'char');
     
     RL('NULL') = '00000';
     RL('E') = '00001';
@@ -68,7 +68,7 @@ function output = gen_rtty(Fs, Fspace, Fmark, Tsymbol, message)
     RF(';') = '11110';
     RF('LTRS') = '11111';
     
-    addErrorBits = @(x) ['0' x '11'];
+    addErrorBits = @(x) ['0' fliplr(x) '2'];
     
     bitmessage = [];
     decodeState = 'letters';
@@ -99,14 +99,20 @@ function output = gen_rtty(Fs, Fspace, Fmark, Tsymbol, message)
     t = 0;
     
     output = [];
+    Tsymbolc = Tsymbol;
     for i = 1 : length(bitmessage)
         if(bitmessage(i) == '1')
             Fsymbol = Fmark;
-        else
+            Tsymbolc = Tsymbol;
+        elseif(bitmessage(i) == '0')
             Fsymbol = Fspace;
+            Tsymbolc = Tsymbol;
+        elseif(bitmessage(i) == '2')
+            Fsymbol = Fmark;
+            Tsymbolc = Tsymbol * stopBits;
         end
         
-        while t < i * Tsymbol
+        while t < i * Tsymbolc
             output = [output sin(2 * pi() * Fsymbol * t)];
             t = t + Ts;
         end
