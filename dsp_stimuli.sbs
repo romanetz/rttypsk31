@@ -31,7 +31,7 @@ ADC1BUF0
 Demand
 0000
 2
-mplab_psk_input.txt
+simulations\mplab_rtty_input.txt
 Hex
 Yes
 (optional)

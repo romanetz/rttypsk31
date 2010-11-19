@@ -131,7 +131,7 @@ function output = gen_psk(Fs, F0, message)
     P(char(127)) = '1110110101';
     
     
-    bitmessage = [];
+    bitmessage = '0000';
     for i = 1 : length(message)
         character = message(i);
         

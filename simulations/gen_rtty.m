@@ -70,8 +70,9 @@ function output = gen_rtty(Fs, Fspace, Fmark, Tsymbol, stopBits, message)
     
     addErrorBits = @(x) ['0' fliplr(x) '2'];
     
-    bitmessage = [];
+    bitmessage = '';
     decodeState = 'letters';
+
     for i = 1 : length(message)
         character = upper(message(i));
         
@@ -112,7 +113,8 @@ function output = gen_rtty(Fs, Fspace, Fmark, Tsymbol, stopBits, message)
             Tsymbolc = Tsymbol * stopBits;
         end
         
-        while t < i * Tsymbolc
+        o_t = t;
+        while t < (o_t + Tsymbolc)
             output = [output sin(2 * pi() * Fsymbol * t)];
             t = t + Ts;
         end
