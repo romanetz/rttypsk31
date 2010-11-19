@@ -464,11 +464,11 @@ int main(void)
 	process = 0;
 	
 	//Decode loop
-	uint16 doRTTY = 0, doPSK = 1;
+	uint16 doRTTY = 1, doPSK = 0;
 	
 	//Useful RTTY Constants
 	const int16 rttySymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 45.45); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
-	const int16 rttySwitchTime = rttySymbolTime / 5;
+	const int16 rttySwitchTime = rttySymbolTime / 4;
 	
 	//RTTY Decode state variables
 	int32 rttyMarkTime = 0, rttySpaceTime = 0,
@@ -509,7 +509,7 @@ int main(void)
 	F16 e_d[IE];
 	
 	//Low pass filter for RTTY	
-	alpha_float = 1000.0f;
+	alpha_float = 1500.0f;
 	beta_float = expf(-1.0f * alpha_float * Ts);
 	
 	F16 lp_alpha, lp_beta;
@@ -578,9 +578,9 @@ int main(void)
 		uint16 Telaps = getBaudTime();
 		
 		if(doRTTY) {
-			if(e < -20000)
+			if(e < 0)
 				rttyCurrentSymbol = rttyMark;
-			else if(e > 20000)
+			else if(e > 0)
 				rttyCurrentSymbol = rttySpace;
 			else
 				rttyCurrentSymbol = rttyNone;
@@ -598,12 +598,12 @@ int main(void)
 					//If need to switch symbols, evaluate the old decodeSymbol before updating to new
 					switch(rttyDecodeSymbol) {
 						case rttyMark:
-							if(rttyCurrentSymbol == rttySpace) rttySpaceTime = rttyDam - Telaps; //The '- Telaps' term avoids double adding
+							if(rttyCurrentSymbol == rttySpace) rttySpaceTime = rttyDam; //The '- Telaps' term avoids double adding
 							rttyMarkTime -= rttyDam;
 							rttyProcessMark = 1;
 							break;
 						case rttySpace:
-							if(rttyCurrentSymbol == rttyMark) rttyMarkTime = rttyDam - Telaps;
+							if(rttyCurrentSymbol == rttyMark) rttyMarkTime = rttyDam;
 							rttySpaceTime -= rttyDam;
 							rttyProcessSpace = 1;
 							break;
@@ -628,7 +628,7 @@ int main(void)
 			}
 			
 			if(rttyProcessMark) {
-				while(rttyMarkTime > rttySymbolTime - rttySwitchTime) {
+				while(rttyMarkTime > 3 * (rttySymbolTime >> 2)) {
 	 				rttyCharacter = (rttyCharacter << 1) | 0x0001;
 	 					
 					rttyMarkTime -= rttySymbolTime;
@@ -640,7 +640,7 @@ int main(void)
 			}
 			
 			if(rttyProcessSpace) {
-				while(rttySpaceTime > rttySymbolTime - rttySwitchTime) {
+				while(rttySpaceTime > 3 * (rttySymbolTime >> 2)) {
 	 				rttyCharacter = (rttyCharacter << 1) & 0xFFFE;
 	 					
 					rttySpaceTime -= rttySymbolTime;
