@@ -38,13 +38,12 @@ F16 td, oldTd;
 #define rttySpace 0
 
 //PSK31 global communicator variables
-#define IE 4
+#define IE 1
 #define psk0 0
 #define psk1 1
 #define pskAny 2
 #define pskNone 3
-uint16 edIdx = 0;
-F16 ed[1024];
+F16 tmp[1024];
 
 F16 atan_lookup(F15 yi, F15 xi);
 
@@ -480,13 +479,44 @@ int main(void)
 		
 	//Useful PSK Constants
 	const int16 pskSymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 31.25); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
-	const int16 pskSwitchTime = pskSymbolTime / 6;
+	const int16 pskSwitchTime = pskSymbolTime / 4;
 	
-	const F16 pi = floatToF16(3.14159265f), piErr = pi - floatToF16(3.14159265f / 5.0f);
+	const F16 pi = floatToF16(3.14159265f), piErr = pi - floatToF16(3.14159265f / 4.0f);
 	//PSK Decode state variables
 	int32 pskDam = 0;
 	
 	uint16 pskWatch = psk1, pskSpace = 0, pskCharacter = 0, pskSymbolCount = 0;
+	
+	//Initialize phase detector DSP
+	
+	//High pass filter for PSK
+	uint16 ed_idx = 0, idx = 0;
+	float Fs, Ts, alpha_float, beta_float;
+	Fs = (float)SAMPLE_RATE;
+	Ts = (1.0f / Fs);
+	
+	alpha_float = 500.0f;
+	beta_float = expf(-1.0f * alpha_float * Ts);
+	
+	F16 hp_one_minus_alpha, hp_beta;
+	F16 e_hp, e_d1;
+	
+	hp_one_minus_alpha = floatToF16(1.0f - alpha_float * Ts);
+	hp_beta = floatToF16(beta_float);
+
+	//Integral for PSK
+	const F16 F16pi = floatToF16(pi);
+	F16 e_d[IE];
+	
+	//Low pass filter for RTTY	
+	alpha_float = 1000.0f;
+	beta_float = expf(-1.0f * alpha_float * Ts);
+	
+	F16 lp_alpha, lp_beta;
+	F16 e_lp;
+	
+	lp_alpha = floatToF16(alpha_float * Ts);
+	lp_beta = floatToF16(beta_float);
 	
 	restartBaudTimer();
 	
@@ -522,16 +552,21 @@ int main(void)
 					);
 	
 		e = atan_lookup(x, y);
-		ed[edIdx] = e;
 		
-		ie += e;
-		ie -= ed[(edIdx - IE) & (1024 - 1)];
-
-		if(edIdx == 1023) {
-			edIdx = 0;
-		} else {
-			edIdx++;
-		}
+		//Highpass filter for PSK
+		e_hp = F16add(F16unsafeMul(4, hp_beta, F16sub(e_hp, e_d1)), F16unsafeMul(4, hp_one_minus_alpha, e));
+		
+		//Lowpass filter for RTTY
+		e_lp = F16add(F16unsafeMul(4, lp_beta, e_lp), F16unsafeMul(4, lp_alpha, e));
+		
+		e_d1 = e;
+		
+		tmp[idx] = e_lp;
+		
+		if(idx >= 1023)
+			idx = 0;
+		else
+			idx++;
 		
 		F16 cd = F16unsafeMul(4, D1, e);
 	
@@ -636,7 +671,7 @@ int main(void)
 		
 			pskDam += Telaps;
 
-			if(pskDam >= (pskSymbolTime - pskSwitchTime) && tie >= piErr) {
+			if(pskDam >= pskSwitchTime && tie >= piErr) {
 				if(pskWatch == pskAny | pskWatch == psk0) {
 					pskCharacter = (pskCharacter << 1) & 0xFFFE;
 					
