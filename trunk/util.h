@@ -12,8 +12,8 @@
 #define int32 long signed int
 #define uint32 long unsigned int
 
-#define Fosc 7370000
-//#define Fosc 6550000
+//#define Fosc 7370000
+#define Fosc 6550000
 #define Fy (Fosc / 2)
 
 //#define D4 PORTBbits.RB0
