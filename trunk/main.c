@@ -8,6 +8,7 @@
 #include "HD44780.h"
 #include "util.h"
 #include "fractionaltypes.h"
+#include "frontend.h"
 
 #define DELAY_LENGTH 64
 
@@ -447,6 +448,7 @@ int main(void)
 	initIO();
 	initADC();
 	initBaudTimer();
+	frontend_init();
 	//initDisplay();
 	
 	sample_idx = 0;
@@ -472,7 +474,7 @@ int main(void)
 	
 	//RTTY Decode state variables
 	int32 rttyMarkTime = 0, rttySpaceTime = 0,
-		rttyDecodeSymbol = rttyNone, rttyDam = 0;
+		rttyDecodeSymbol = rttyMark, rttyDam = 0;
 		
 	uint16 rttyCurrentSymbol = rttyNone, rttyProcessMark = 0, rttyProcessSpace = 0,
 		rttyCharacter = 0, rttySymbolCount = 0;
@@ -553,6 +555,13 @@ int main(void)
 	
 		e = atan_lookup(x, y);
 		
+		tmp[idx] = e;
+		
+		if(idx >= 1023)
+			idx = 0;
+		else
+			idx++;
+			
 		//Highpass filter for PSK
 		e_hp = F16add(F16unsafeMul(4, hp_beta, F16sub(e_hp, e_d1)), F16unsafeMul(4, hp_one_minus_alpha, e));
 		
@@ -561,12 +570,12 @@ int main(void)
 		
 		e_d1 = e;
 		
-		tmp[idx] = e_lp;
+		/*tmp[idx] = e_lp;
 		
 		if(idx >= 1023)
 			idx = 0;
 		else
-			idx++;
+			idx++;*/
 		
 		F16 cd = F16unsafeMul(4, D1, e);
 	
@@ -578,9 +587,9 @@ int main(void)
 		uint16 Telaps = getBaudTime();
 		
 		if(doRTTY) {
-			if(e < 0)
+			if(e_lp <= 0)
 				rttyCurrentSymbol = rttyMark;
-			else if(e > 0)
+			else if(e_lp > 0)
 				rttyCurrentSymbol = rttySpace;
 			else
 				rttyCurrentSymbol = rttyNone;
@@ -598,13 +607,13 @@ int main(void)
 					//If need to switch symbols, evaluate the old decodeSymbol before updating to new
 					switch(rttyDecodeSymbol) {
 						case rttyMark:
-							if(rttyCurrentSymbol == rttySpace) rttySpaceTime = rttyDam; //The '- Telaps' term avoids double adding
-							rttyMarkTime -= rttyDam;
+							if(rttyCurrentSymbol == rttySpace) rttySpaceTime = rttyDam - Telaps; //The '- Telaps' term avoids double adding
+							rttyMarkTime -= rttyDam - Telaps;
 							rttyProcessMark = 1;
 							break;
 						case rttySpace:
-							if(rttyCurrentSymbol == rttyMark) rttyMarkTime = rttyDam;
-							rttySpaceTime -= rttyDam;
+							if(rttyCurrentSymbol == rttyMark) rttyMarkTime = rttyDam - Telaps;
+							rttySpaceTime -= rttyDam - Telaps;
 							rttyProcessSpace = 1;
 							break;
 					}
@@ -628,7 +637,7 @@ int main(void)
 			}
 			
 			if(rttyProcessMark) {
-				while(rttyMarkTime > 3 * (rttySymbolTime >> 2)) {
+				while(rttyMarkTime > (rttySymbolTime >> 1)) {
 	 				rttyCharacter = (rttyCharacter << 1) | 0x0001;
 	 					
 					rttyMarkTime -= rttySymbolTime;
@@ -640,7 +649,7 @@ int main(void)
 			}
 			
 			if(rttyProcessSpace) {
-				while(rttySpaceTime > 3 * (rttySymbolTime >> 2)) {
+				while(rttySpaceTime > (rttySymbolTime >> 1)) {
 	 				rttyCharacter = (rttyCharacter << 1) & 0xFFFE;
 	 					
 					rttySpaceTime -= rttySymbolTime;
@@ -893,11 +902,29 @@ F16 atan_lookup(F15 yi, F15 xi) {
 		return F16neg(F16add(val, F16pi1By2));
 }
 
+uint16 idx;
+
 void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) {
 	td = F16dec(td);
 		
 	F15 input = (ADC1BUF0 - 0x0800) << 4;
+
+	/*tmp[idx] = input;
 	
+	if(idx >= 1023)
+		idx = 0;
+	else
+		idx++;*/
+			
+	//input = frontend_filter(input);
+	
+	/*if(idx >= 1023)
+		idx = 0;
+	else
+		idx++;
+		
+	tmp[idx] = input;*/
+			
 	AD1CON1bits.SAMP = 1;
 
 	sample_idx = (sample_idx + 1) & (DELAY_LENGTH - 1);

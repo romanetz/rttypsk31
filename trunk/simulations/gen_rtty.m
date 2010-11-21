@@ -70,7 +70,7 @@ function output = gen_rtty(Fs, Fspace, Fmark, Tsymbol, stopBits, message)
     
     addErrorBits = @(x) ['0' fliplr(x) '2'];
     
-    bitmessage = '1111';
+    bitmessage = '';
     decodeState = 'letters';
 
     for i = 1 : length(message)
