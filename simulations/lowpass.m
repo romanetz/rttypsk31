@@ -1,6 +1,6 @@
 clear all; clc;
 
-alpha = 400;
+alpha = 1500;
 Ts = 1 / 8000;
 
 beta = exp(-alpha * Ts);
@@ -46,10 +46,10 @@ plot(t, ct, 'r-');
 hold on;
 dt = step(dsys, t);
 stem(t, dt, 'b-');
-plot(t, max(dt) * 0.2, 'g-');
+plot(t, max(dt) * 0.8, 'g-');
 xlabel('Time (s)');
 ylabel('Response');
-legend('Continuous', 'Discrete', sprintf('n = %f', (log(0.2) / log(beta) + 1) * Ts));
+legend('Continuous', 'Discrete', sprintf('n = %f', (log(0.8) / log(beta) + 1) * Ts));
 title('Step Response of lowpass filters');
 
 [num den] = tfdata(dsys);
