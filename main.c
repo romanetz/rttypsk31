@@ -449,7 +449,7 @@ int main(void)
 	initADC();
 	initBaudTimer();
 	frontend_init();
-	//initDisplay();
+	initDisplay();
 	
 	sample_idx = 0;
 	
@@ -469,7 +469,7 @@ int main(void)
 	uint16 doRTTY = 1, doPSK = 0;
 	
 	//Useful RTTY Constants
-	const int16 rttySymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 45.45); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
+	const int16 rttySymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 44.45); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
 	const int16 rttySwitchTime = rttySymbolTime / 4;
 	
 	//RTTY Decode state variables
@@ -555,12 +555,12 @@ int main(void)
 	
 		e = atan_lookup(x, y);
 		
-		tmp[idx] = e;
+		/*tmp[idx] = e;
 		
 		if(idx >= 1023)
 			idx = 0;
 		else
-			idx++;
+			idx++;*/
 			
 		//Highpass filter for PSK
 		e_hp = F16add(F16unsafeMul(4, hp_beta, F16sub(e_hp, e_d1)), F16unsafeMul(4, hp_one_minus_alpha, e));
@@ -570,12 +570,12 @@ int main(void)
 		
 		e_d1 = e;
 		
-		/*tmp[idx] = e_lp;
+		tmp[idx] = e_lp;
 		
 		if(idx >= 1023)
 			idx = 0;
 		else
-			idx++;*/
+			idx++;
 		
 		F16 cd = F16unsafeMul(4, D1, e);
 	
@@ -669,7 +669,7 @@ int main(void)
 					
 					rttySymbolCount -= 8;
 					
-					//printRTTY(adjustedCharacter);
+					printRTTY(adjustedCharacter);
 				} else
 					rttySymbolCount--;
 			}
@@ -693,7 +693,7 @@ int main(void)
 					pskCharacter >>= 1;
 					
 					if(pskSymbolCount > 0) {
-						//printPSK(pskCharacter);
+						printPSK(pskCharacter);
 						if(pskCharacter != 0b1)
 							pskSpace = 0;
 					} else if(!pskSpace) {
@@ -916,7 +916,7 @@ void __attribute__((__interrupt__, __shadow__, no_auto_psv)) _T3Interrupt(void) 
 	else
 		idx++;*/
 			
-	//input = frontend_filter(input);
+	input = frontend_filter(input);
 	
 	/*if(idx >= 1023)
 		idx = 0;
@@ -993,6 +993,7 @@ void printRTTY(uint16 character) {
 
 	switch(character) {
 		case (RTTY_NULL):
+			character <<= 1;
 			printDisplay(HD_space);
 			break;
 		case (RTTY_LF):

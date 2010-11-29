@@ -3,7 +3,7 @@ function gen_rtty_for_mplab_sim(message, filename, sn)
 
     scale = 2^11 - 1;
     
-    signal = awgn(gen_rtty(8000, 1445, 1275, 1 / 45.45, 2, message), sn);
+    signal = awgn(gen_rtty(8000, 1275, 1445, 1 / 45.45, 2, message), sn);
     
     rtty = round(scale * (signal / max(signal) + 1));
     
