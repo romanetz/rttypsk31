@@ -6,7 +6,6 @@ Ts = 1 / 8000;
 beta = exp(-alpha * Ts);
 
 csys = tf([alpha], [1 alpha]);
-%dsys = tf([1 -1], [1 -beta], Ts);
 dsys = tf([alpha*Ts], [1 -beta], Ts);
 
 csys_f = @(f) freqresp(csys, f);
