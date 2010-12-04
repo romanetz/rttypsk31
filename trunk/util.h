@@ -15,6 +15,7 @@
 #define Fosc 7370000
 //#define Fosc 6950000
 #define Fy (Fosc / 2)
+#define SAMPLE_RATE 8000
 
 //#define D4 PORTBbits.RB0
 //#define D5 PORTBbits.RB1
@@ -23,5 +24,12 @@
 //#define RS PORTBbits.RB4
 //#define RW PORTBbits.RB5
 //#define E PORTDbits.RD9
+
+void io_init();
+void adc_init();
+void sample_timer_init();
+
+void delay32_2(unsigned long int delay);
+uint16 bitrev(uint16 in, uint8 bits);
 
 #endif
