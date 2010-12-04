@@ -1,4 +1,4 @@
-function output = gen_rtty(Fs, Fspace, Fmark, Tsymbol, stopBits, message)
+function output = gen_rtty(Fs, Fmark, Fspace, Tsymbol, stopBits, message)
     RL = containers.Map('KeyType', 'char');
     RF = containers.Map('KeyType', 'char');
     
@@ -101,6 +101,7 @@ function output = gen_rtty(Fs, Fspace, Fmark, Tsymbol, stopBits, message)
     
     output = [];
     Tsymbolc = Tsymbol;
+    theta = 0;
     for i = 1 : length(bitmessage)
         if(bitmessage(i) == '1')
             Fsymbol = Fmark;
@@ -115,7 +116,8 @@ function output = gen_rtty(Fs, Fspace, Fmark, Tsymbol, stopBits, message)
         
         o_t = t;
         while t < (o_t + Tsymbolc)
-            output = [output sin(2 * pi() * Fsymbol * t)];
+            theta = theta + 2 * pi() * Fsymbol * Ts;
+            output = [output sin(theta)];
             t = t + Ts;
         end
     end
