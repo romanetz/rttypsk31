@@ -101,7 +101,7 @@ uint16 rttyCurrentSymbol, rttyProcessMark, rttyProcessSpace,
 F16 lp_alpha, lp_beta;
 F16 e_lp;
 
-F16 tmp[512];
+//F16 tmp[512];
 uint16 idxtmp;
 
 void rtty_init() {
@@ -134,11 +134,11 @@ void rtty_process(F16 e) {
 	
 	e_lp = F16add(F16unsafeMul(4, lp_beta, e_lp), F16unsafeMul(4, lp_alpha, e));
 	
-		tmp[idxtmp] = e;
-		if(idxtmp > 511)
-			idxtmp = 0;
-		else
-			idxtmp++;
+	/*tmp[idxtmp] = e;
+	if(idxtmp > 511)
+		idxtmp = 0;
+	else
+		idxtmp++;*/
 		
 	if(e <= 0)
 		rttyCurrentSymbol = rttyMark;
