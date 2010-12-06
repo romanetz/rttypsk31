@@ -101,9 +101,6 @@ uint16 rttyCurrentSymbol, rttyProcessMark, rttyProcessSpace,
 F16 lp_alpha, lp_beta;
 F16 e_lp;
 
-//F16 tmp[512];
-uint16 idxtmp;
-
 void rtty_init() {
 	rttySymbolTime = (uint16)((((float)Fosc / 2.0) / 8.0) / 45.45); // The timer is driven by Fosc / 2 through a 256 prescaler and we are looking for 45.45 baud symbols
 	rttySwitchTime = rttySymbolTime / 4;
@@ -126,23 +123,25 @@ void rtty_init() {
 	
 	lp_alpha = floatToF16(alpha_float * 1.0f / ((float)SAMPLE_RATE));
 	lp_beta = floatToF16(beta_float);
-	idxtmp = 0;
 }
+
+/*F16 tmp[1024];
+uint16 idxtmp = 0;*/
 
 void rtty_process(F16 e) {
 	uint16 Telaps = baud_time_get();
 	
-	e_lp = F16add(F16unsafeMul(4, lp_beta, e_lp), F16unsafeMul(4, lp_alpha, e));
-	
 	/*tmp[idxtmp] = e;
-	if(idxtmp > 511)
+	if(idxtmp > 1023)
 		idxtmp = 0;
 	else
 		idxtmp++;*/
 		
-	if(e <= 0)
+	e_lp = F16add(F16unsafeMul(4, lp_beta, e_lp), F16unsafeMul(4, lp_alpha, e));
+		
+	if(e_lp <= 0)
 		rttyCurrentSymbol = rttyMark;
-	else if(e > 0)
+	else if(e_lp > 0)
 		rttyCurrentSymbol = rttySpace;
 			
 	//Watch for a symbol switch

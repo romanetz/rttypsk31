@@ -11,7 +11,7 @@ sig_time = (0 : length(sig_vals) - 1) * dt;
 runtime = sig_time(length(sig_time));
 
 % System characteristics
-psi = pi() / 2
+psi = pi() / 2;
 
 W0 = 2 * pi() * F0;
 T0 = 2 * pi() / W0;
@@ -56,16 +56,15 @@ while t < runtime
 end
 
 subplot(2, 1, 1);
-hold off;
 plot(0 : dt : runtime, interp1(sig_time, sig_vals, 0 : dt : runtime));
-hold on;
-stem(t_plot, interp1(sig_time, sig_vals, t_plot), '*r');
+xlabel('Time (s)');
+ylabel('Signal');
+title('BPSK Signal');
+axis([0 runtime -1.1 1.1]);
 
 subplot(2, 1, 2);
-%hold off;
 stem(t_plot, abs(e_plot));
 xlabel('Time (s)');
-ylabel('Magnitude of Error Signal');
-title('Detection of 70hz Phase Reversals on 1000hz Signal');
-%hold on;
-%stem(t_plot, m_plot, 'r');
+ylabel('abs(Error)');
+title('Detection of BPSK Signal');
+axis([0 runtime -0.3 max(abs(e_plot))*1.1]);

@@ -1,5 +1,6 @@
 #include "fractionaltypes.h"
 
+#include "util.h"
 #include "float.h"
 #include "math.h"
 
@@ -19,27 +20,21 @@ void frontend_init() {
 	xd1 = xd2 = xd3 = yd1 = yd2 = yd3 = yd4 = 0;
 	
 	xc1 = floatToF15(0.009815f);
-	xc2 = floatToF15(0.0f);
-	xc3 = floatToF15(0.0f);
 	
 	//yc1 = floatToF15(0.874318f);
 	yc1 = floatToF15(0.915618f);
 	//yc2 = floatToF15(-0.807649f);
 	yc2 = floatToF15(-0.898693f);
-	yc3 = floatToF15(0.0f);
-	yc4 = floatToF15(0.0f);
 }
 
 F15 frontend_filter(F15 x) {
-	F15 y = F15mul(xd1, xc1) + F15mul(xd2, xc2) + F15mul(xd3, xc3) +
-			F15mul(yd1, yc1) + F15mul(yd2, yc2) + F15mul(yd3, yc3) + F15mul(yd4, yc4);
+	F15 y = F15mul(xd1, xc1) +
+			F15mul(yd1, yc1) + F15mul(yd2, yc2) ;
 		
-	xd3 = xd2;
-	xd2 = xd1;
+
+
 	xd1 = x;
 	
-	yd4 = yd3;
-	yd3 = yd2;
 	yd2 = yd1;
 	yd1 = y;
 }

@@ -44,7 +44,7 @@ void setDispPort(unsigned int rwrs, unsigned int x) {
 	RS = ((rwrs) >> 0) & 0x1;
 }
 
-void initDisplay() {
+void display_init() {
 	setDispPortSend();
 	//Wait at least 15ms
 	__delay32(30 * Fy / 1000);

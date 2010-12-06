@@ -123,5 +123,5 @@
 #define HD_rightarrow 0b01111110
 #define HD_leftarrow 0b01111111
 
-void initDisplay();
+void display_init();
 void comDisplay(unsigned short int rwrs, unsigned short int val);
